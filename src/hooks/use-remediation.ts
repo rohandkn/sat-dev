@@ -1,0 +1,126 @@
+'use client'
+
+import { useState, useCallback } from 'react'
+
+interface Message {
+  role: 'assistant' | 'user'
+  content: string
+}
+
+export function useRemediation() {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [threadId, setThreadId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [streaming, setStreaming] = useState(false)
+  const [isResolved, setIsResolved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const startThread = useCallback(async (questionId: string, sessionId: string) => {
+    setLoading(true)
+    setError(null)
+    setMessages([])
+    setIsResolved(false)
+
+    try {
+      const res = await fetch('/api/remediation/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId, sessionId }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        // If thread already exists, load it
+        if (data.thread) {
+          setThreadId(data.thread.id)
+          setMessages(data.messages.map((m: { role: string; content: string }) => ({
+            role: m.role as 'assistant' | 'user',
+            content: m.content,
+          })))
+          setIsResolved(data.thread.is_resolved)
+          setLoading(false)
+          return
+        }
+        throw new Error(data.error || 'Failed to start remediation')
+      }
+
+      const newThreadId = res.headers.get('X-Thread-Id')
+      if (newThreadId) setThreadId(newThreadId)
+
+      setLoading(false)
+      setStreaming(true)
+
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let accumulated = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        accumulated += decoder.decode(value, { stream: true })
+        setMessages([{ role: 'assistant', content: accumulated }])
+      }
+
+      setStreaming(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start remediation')
+      setLoading(false)
+      setStreaming(false)
+    }
+  }, [])
+
+  const sendMessage = useCallback(async (message: string) => {
+    if (!threadId || isResolved) return
+
+    // Add user message optimistically
+    setMessages(prev => [...prev, { role: 'user', content: message }])
+    setLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/remediation/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threadId, message }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to send message')
+      }
+
+      const data = await res.json()
+
+      setMessages(prev => [...prev, { role: 'assistant', content: data.message }])
+      if (data.isResolved) {
+        setIsResolved(true)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send message')
+    } finally {
+      setLoading(false)
+    }
+  }, [threadId, isResolved])
+
+  const reset = useCallback(() => {
+    setMessages([])
+    setThreadId(null)
+    setIsResolved(false)
+    setError(null)
+  }, [])
+
+  return {
+    messages,
+    threadId,
+    loading,
+    streaming,
+    isResolved,
+    error,
+    startThread,
+    sendMessage,
+    reset,
+  }
+}

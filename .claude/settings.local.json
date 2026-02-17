@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --turbopack)",
+      "Bash(node --version:*)",
+      "Bash(npm:*)",
+      "Bash(export PATH=\"/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/*/bin:$PATH\")",
+      "Bash(source ~/.zshrc)",
+      "Bash(curl:*)",
+      "Bash(bash)",
+      "Bash(npx create-next-app@latest:*)"
+    ]
+  }
+}
