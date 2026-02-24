@@ -84,7 +84,8 @@ export default function PostExamPage() {
   const handleContinue = useCallback(
     ({ score, topicSlug, sessionId: id }: { score: number; topicSlug: string; sessionId: string }) => {
       if (score >= PASS_THRESHOLD) {
-        router.push(`/topics/${topicSlug}`)
+        // Navigate to dashboard so the student sees the next unlocked topic
+        router.push('/dashboard')
       } else {
         router.push(`/topics/${topicSlug}/review?session=${id}`)
       }

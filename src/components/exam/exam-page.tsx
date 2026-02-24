@@ -174,6 +174,7 @@ export function ExamPage({
           const isAnswered = answers.has(q.id)
           return (
             <button
+              type="button"
               key={q.id}
               onClick={() => goToQuestion(i)}
               className={`w-8 h-8 rounded-full text-xs font-medium border transition-colors

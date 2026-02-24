@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     const params = new URLSearchParams({
       part: 'snippet',
-      q: `${query} SAT math tutorial`,
+      q: `"${query}" how to solve step by step math`,
       type: 'video',
       maxResults: '3',
       videoEmbeddable: 'true',

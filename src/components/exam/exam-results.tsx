@@ -95,8 +95,18 @@ export function ExamResults({
                   <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                     Show explanation
                   </summary>
-                  <div className="mt-2 bg-muted p-3 rounded-md">
-                    <KatexRenderer content={q.explanation} />
+                  <div className="mt-2 bg-muted p-3 rounded-md space-y-1.5">
+                    {q.explanation
+                      // Handle both actual newline characters and literal "\n" strings
+                      // that the LLM sometimes outputs in JSON structured output
+                      .replace(/\\n/g, '\n')
+                      .split('\n')
+                      .filter(line => line.trim())
+                      .map((line, idx) => (
+                        <div key={idx} className="pl-2">
+                          <KatexRenderer content={line} />
+                        </div>
+                      ))}
                   </div>
                 </details>
               </CardContent>

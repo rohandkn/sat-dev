@@ -257,7 +257,22 @@ describe('POST /api/exam/submit', () => {
   })
 
   describe('state transitions', () => {
-    it('pre-exam returns nextState: pre_exam_completed', async () => {
+    it('pre-exam with score < 100 returns nextState: pre_exam_completed', async () => {
+      const res = await POST(makeRequest({
+        sessionId: SESSION_ID,
+        examType: 'pre',
+        answers: [
+          { questionId: Q1_ID, answer: 'B', isIdk: false },  // correct
+          { questionId: Q2_ID, answer: 'A', isIdk: false },  // wrong
+        ],
+      }))
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.score).toBe(50)
+      expect(body.nextState).toBe('pre_exam_completed')
+    })
+
+    it('pre-exam with perfect 100% score skips to session_passed', async () => {
       const res = await POST(makeRequest({
         sessionId: SESSION_ID,
         examType: 'pre',
@@ -268,7 +283,8 @@ describe('POST /api/exam/submit', () => {
       }))
       expect(res.status).toBe(200)
       const body = await res.json()
-      expect(body.nextState).toBe('pre_exam_completed')
+      expect(body.score).toBe(100)
+      expect(body.nextState).toBe('session_passed')
     })
 
     it('post-exam with score >= 80 transitions to session_passed', async () => {

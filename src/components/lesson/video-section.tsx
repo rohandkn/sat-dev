@@ -38,7 +38,7 @@ export function VideoSection({ topicName }: VideoSectionProps) {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-3">
-          {videos.map(video => (
+          {videos.slice(0, 3).map(video => (
             <div key={video.id} className="space-y-1.5">
               <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted">
                 <iframe

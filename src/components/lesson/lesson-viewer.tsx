@@ -102,17 +102,27 @@ export function LessonViewer({ content, loading, streaming }: LessonViewerProps)
     )
   }
 
+  // During streaming, render raw text to avoid constant ReactMarkdown
+  // unmount/remount cycles that cause visible flickering. One clean render
+  // happens when streaming completes and streaming flips to false.
+  if (streaming) {
+    return (
+      <div className="pb-8">
+        <div className="prose dark:prose-invert max-w-none whitespace-pre-wrap text-[0.9375rem] leading-7">
+          {content}
+        </div>
+        <span className="inline-block w-2 h-4 bg-primary/70 animate-pulse ml-0.5 align-middle rounded-sm" />
+      </div>
+    )
+  }
+
   return (
     <ScrollArea className="h-full">
       <div className="pb-8">
         <MarkdownRenderer
           content={content}
           components={lessonComponents}
-          skipMath={streaming}
         />
-        {streaming && (
-          <span className="inline-block w-2 h-4 bg-primary/70 animate-pulse ml-0.5 align-middle rounded-sm" />
-        )}
       </div>
     </ScrollArea>
   )

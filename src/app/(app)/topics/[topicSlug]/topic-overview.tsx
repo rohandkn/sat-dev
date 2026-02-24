@@ -75,8 +75,15 @@ export function TopicOverview({
       router.push(`/topics/${topic.slug}/lesson?session=${activeSession.id}`)
     } else if (state.startsWith('post_exam')) {
       router.push(`/topics/${topic.slug}/post-exam?session=${activeSession.id}`)
-    } else if (state.includes('remediation')) {
+    } else if (state === 'remediation_active') {
+      // Only the remediation_active state maps to the review/chat page
       router.push(`/topics/${topic.slug}/review?session=${activeSession.id}`)
+    } else if (state.startsWith('remediation_lesson')) {
+      // Remediation lesson states go to the lesson page
+      router.push(`/topics/${topic.slug}/lesson?session=${activeSession.id}&type=remediation`)
+    } else if (state.startsWith('remediation_exam')) {
+      // Remediation exam states go to the post-exam page
+      router.push(`/topics/${topic.slug}/post-exam?session=${activeSession.id}&type=remediation`)
     }
   }
 
@@ -97,20 +104,28 @@ export function TopicOverview({
           <CardHeader>
             <CardTitle className="text-base">Your Profile</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="space-y-3 text-sm">
             <div>
               <span className="font-medium">Mastery:</span> {studentModel.mastery_level}%
             </div>
             {studentModel.strengths.length > 0 && (
               <div>
-                <span className="font-medium">Strengths:</span>{' '}
-                {studentModel.strengths.join(', ')}
+                <p className="font-medium mb-1">Strengths:</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {studentModel.strengths.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {studentModel.weaknesses.length > 0 && (
               <div>
-                <span className="font-medium">Areas to improve:</span>{' '}
-                {studentModel.weaknesses.join(', ')}
+                <p className="font-medium mb-1">Areas to improve:</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {studentModel.weaknesses.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </CardContent>

@@ -118,6 +118,16 @@ export function RemediationChat({
                 </div>
               </div>
             )}
+
+            {/* Hardcoded success message when the student reaches the correct answer.
+                Replaces the LLM's final message so the student sees a clear, consistent confirmation. */}
+            {isResolved && (
+              <div className="flex justify-start">
+                <div className="max-w-[85%] rounded-lg px-4 py-3 text-sm bg-muted font-medium">
+                  Awesome, you got the correct answer: <strong>{correctAnswer}</strong>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

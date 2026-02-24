@@ -5,10 +5,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { RemediationChat } from '@/components/remediation/remediation-chat'
 import { useRemediation } from '@/hooks/use-remediation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { KatexRenderer } from '@/components/math/katex-renderer'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface WrongQuestion {
@@ -177,6 +174,7 @@ export default function ReviewPage() {
       <div className="flex items-center justify-center gap-2">
         {wrongQuestions.map((q, i) => (
           <button
+            type="button"
             key={q.id}
             onClick={() => {
               remediation.reset()
@@ -197,8 +195,9 @@ export default function ReviewPage() {
         {resolvedQuestions.size} of {wrongQuestions.length} questions resolved
       </div>
 
-      {/* Current question remediation */}
-      {currentQuestion && !resolvedQuestions.has(currentQuestion.id) && (
+      {/* Current question remediation — keep chat visible even after resolved so
+          the student can read the final response before navigating away */}
+      {currentQuestion && (
         <div className="h-[min(500px,calc(100vh-22rem))]">
           <RemediationChat
             questionText={currentQuestion.question_text}
@@ -209,25 +208,11 @@ export default function ReviewPage() {
             messages={remediation.messages}
             loading={remediation.loading}
             streaming={remediation.streaming}
-            isResolved={remediation.isResolved}
+            isResolved={remediation.isResolved || resolvedQuestions.has(currentQuestion.id)}
             error={remediation.error}
             onSendMessage={remediation.sendMessage}
           />
         </div>
-      )}
-
-      {currentQuestion && resolvedQuestions.has(currentQuestion.id) && (
-        <Card className="border-green-200">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Question {currentQuestionIndex + 1}</CardTitle>
-              <Badge variant="default" className="bg-green-600">Resolved</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <KatexRenderer content={currentQuestion.question_text} />
-          </CardContent>
-        </Card>
       )}
 
       {/* Navigation */}

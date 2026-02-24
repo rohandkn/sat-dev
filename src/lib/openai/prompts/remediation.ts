@@ -44,8 +44,12 @@ Begin the remediation by:
 2. Asking a simpler sub-question or giving a hint that guides them toward the key concept
 3. Do NOT reveal the correct answer yet
 
-Use LaTeX ($...$) for any math in your response.
-Keep your response concise (2-4 sentences plus a question).`
+Use LaTeX ($...$) for any math in your response — even single variables like $x$ or $y$.
+NEVER put spaces after opening $ or before closing $.
+ALWAYS put a SPACE before and after every $...$ expression in prose (WRONG: "the value of$y$when$x = 2$", CORRECT: "the value of $y$ when $x = 2$").
+NEVER write bare LaTeX like \frac or \left outside $...$ delimiters.
+Keep your response concise (2-4 sentences plus a question).
+Do NOT start your response with "Tutor:", "Assistant:", or any role label. Begin directly with your message.`
 }
 
 interface RemediationRespondInput {
@@ -62,7 +66,7 @@ export function buildRemediationRespondPrompt(input: RemediationRespondInput): s
   const { topicName, questionText, choices, correctAnswer, explanation, conversationHistory, studentMessage } = input
 
   const historyStr = conversationHistory
-    .map(m => `${m.role === 'assistant' ? 'Tutor' : 'Student'}: ${m.content}`)
+    .map(m => `[${m.role === 'assistant' ? 'assistant' : 'student'}]: ${m.content}`)
     .join('\n\n')
 
   return `You are a Socratic SAT Math tutor guiding a student through a problem they got wrong.
@@ -88,9 +92,10 @@ INSTRUCTIONS:
 - If the student is stuck, provide a more direct hint
 - If the student demonstrates clear understanding of the concept, mark the conversation as RESOLVED
 - Keep responses concise (2-4 sentences)
-- Use LaTeX ($...$) for math
+- Use LaTeX ($...$) for ALL math including single variables — no spaces after opening $ or before closing $, ALWAYS space before and after every $...$ in prose, NEVER write bare LaTeX (\frac, \left, \right) outside $...$
 - Be warm and encouraging
 - After 4-5 exchanges, if the student is still struggling, explain the solution clearly and mark as RESOLVED
+- IMPORTANT: Do NOT start your response with "Tutor:", "Assistant:", or any role label. Begin directly with your message.
 
 Respond with a JSON object:
 {

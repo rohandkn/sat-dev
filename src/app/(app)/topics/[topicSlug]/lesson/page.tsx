@@ -59,7 +59,7 @@ export default function LessonPage() {
       </div>
 
       {complete && topicSlug && (
-        <VideoSection topicName={topicSlug.replace(/-/g, ' ')} />
+        <VideoSection topicName={topicSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} />
       )}
 
       {complete && (

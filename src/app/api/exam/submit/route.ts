@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { calculateScore, gradeAnswer } from '@/lib/learning-loop/scoring'
 import { canTransition, getNextState } from '@/lib/learning-loop/state-machine'
+import { unlockNextTopic } from '@/lib/learning-loop/progression'
 import { z } from 'zod'
 
 const answerSchema = z.object({
@@ -138,10 +139,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Perfect score on pre-exam means the student already knows the material.
+    // Skip the lesson/post-exam cycle and advance directly to session_passed.
+    if (examType === 'pre' && score === 100) {
+      updates.state = 'session_passed'
+      nextState = 'session_passed'
+    }
+
     await supabase
       .from('learning_sessions')
       .update(updates)
       .eq('id', sessionId)
+
+    // When session is passed, unlock the next topic and mark current as completed
+    if (nextState === 'session_passed') {
+      await Promise.all([
+        unlockNextTopic(supabase, user.id, session.topic_id),
+        supabase
+          .from('user_topic_progress')
+          .update({ status: 'completed', updated_at: new Date().toISOString() })
+          .eq('user_id', user.id)
+          .eq('topic_id', session.topic_id),
+      ])
+    }
 
     return NextResponse.json({
       score,

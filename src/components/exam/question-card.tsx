@@ -54,6 +54,7 @@ export function QuestionCard({
 
             return (
               <button
+                type="button"
                 key={key}
                 onClick={() => !showResult && onSelectAnswer(key)}
                 disabled={showResult}

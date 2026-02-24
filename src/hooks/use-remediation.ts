@@ -2,6 +2,11 @@
 
 import { useState, useCallback } from 'react'
 
+// Strip any role prefix the LLM might include despite being told not to
+function stripRolePrefix(text: string): string {
+  return text.replace(/^(Tutor|Assistant|AI|Mentor|Helper):\s*/i, '').trim()
+}
+
 interface Message {
   role: 'assistant' | 'user'
   content: string
@@ -69,14 +74,14 @@ export function useRemediation() {
 
           if (pendingRafId === null) {
             pendingRafId = requestAnimationFrame(() => {
-              setMessages([{ role: 'assistant', content: pendingText }])
+              setMessages([{ role: 'assistant', content: stripRolePrefix(pendingText) }])
               pendingRafId = null
             })
           }
         }
 
         if (pendingRafId !== null) cancelAnimationFrame(pendingRafId)
-        setMessages([{ role: 'assistant', content: accumulated }])
+        setMessages([{ role: 'assistant', content: stripRolePrefix(accumulated) }])
         setStreaming(false)
       } else {
         // Existing thread — response is JSON with thread + messages
@@ -118,9 +123,12 @@ export function useRemediation() {
 
       const data = await res.json()
 
-      setMessages(prev => [...prev, { role: 'assistant', content: data.message }])
       if (data.isResolved) {
+        // Don't add the LLM's final response — RemediationChat will render a
+        // hardcoded "Awesome, you got the correct answer: [answer]" message instead.
         setIsResolved(true)
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: stripRolePrefix(data.message) }])
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message')
