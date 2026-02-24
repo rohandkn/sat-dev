@@ -125,7 +125,7 @@ export function useRemediation() {
 
       if (data.isResolved) {
         // Don't add the LLM's final response — RemediationChat will render a
-        // hardcoded "Awesome, you got the correct answer: [answer]" message instead.
+        // hardcoded "Awesome, you now know how to derive the correct answer: [answer]" message instead.
         setIsResolved(true)
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: stripRolePrefix(data.message) }])

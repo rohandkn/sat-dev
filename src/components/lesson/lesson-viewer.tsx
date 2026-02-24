@@ -37,7 +37,7 @@ const lessonComponents: Components = {
 
       return (
         <h3 className="!mt-10 !mb-3 !ml-4">
-          <span className="bg-muted text-foreground text-base font-medium px-5 py-2 rounded-full">
+          <span className="bg-muted text-foreground text-base font-medium px-5 py-2 inline-block">
             {boldPart && <strong className="font-semibold">{boldPart}</strong>}
             {tail}
           </span>
