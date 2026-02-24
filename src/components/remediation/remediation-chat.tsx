@@ -6,7 +6,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { KatexBlock } from '@/components/math/katex-renderer'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface Message {
@@ -84,8 +83,8 @@ export function RemediationChat({
         </details>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col min-h-0">
-        <ScrollArea className="flex-1 pr-4" ref={scrollRef}>
+      <CardContent className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 overflow-y-auto min-h-0 pr-2" ref={scrollRef}>
           <div className="space-y-4 pb-4">
             {messages.map((msg, i) => (
               <div
@@ -120,7 +119,7 @@ export function RemediationChat({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         {error && (
           <p className="text-destructive text-sm py-2">{error}</p>

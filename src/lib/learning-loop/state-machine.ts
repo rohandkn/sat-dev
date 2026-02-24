@@ -48,14 +48,13 @@ export function canTransition(currentState: string, nextState: string): boolean 
 
 export function getNextState(currentState: string, context: {
   examScore?: number
-  hasWrongAnswers?: boolean
   remediationLoopCount?: number
 }): string {
-  const { examScore, hasWrongAnswers, remediationLoopCount = 0 } = context
+  const { examScore, remediationLoopCount = 0 } = context
 
   switch (currentState) {
     case 'post_exam_completed':
-      if (examScore !== undefined && examScore >= 80 && !hasWrongAnswers) {
+      if (examScore !== undefined && examScore >= 80) {
         return 'session_passed'
       }
       return 'remediation_active'

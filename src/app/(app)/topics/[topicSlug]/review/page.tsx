@@ -199,7 +199,7 @@ export default function ReviewPage() {
 
       {/* Current question remediation */}
       {currentQuestion && !resolvedQuestions.has(currentQuestion.id) && (
-        <div className="h-[500px]">
+        <div className="h-[min(500px,calc(100vh-22rem))]">
           <RemediationChat
             questionText={currentQuestion.question_text}
             questionChoices={currentQuestion.choices}

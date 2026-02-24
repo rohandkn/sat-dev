@@ -104,6 +104,24 @@ export async function POST(request: NextRequest) {
       }))
     }
 
+    // Belt-and-suspenders: if questions were already inserted by a concurrent
+    // request that raced past the state guard, return them instead of generating
+    // a second set (which would create duplicates).
+    const { data: raceCheck } = await supabase
+      .from('exam_questions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('exam_type', examType)
+      .order('question_number')
+
+    if (raceCheck && raceCheck.length > 0) {
+      await supabase
+        .from('learning_sessions')
+        .update({ state: activeState, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+      return NextResponse.json({ questions: raceCheck })
+    }
+
     const questionCount = examType === 'pre'
       ? PRE_EXAM_QUESTION_COUNT
       : examType === 'post'
@@ -121,9 +139,16 @@ export async function POST(request: NextRequest) {
     })
 
     const result = await jsonChatCompletion<ExamGeneration>(
-      [{ role: 'user', content: prompt }],
+      [
+        {
+          role: 'system',
+          content: 'You are a precise SAT Math question writer. Every answer and explanation must be mathematically correct. Solve each problem fully before writing. Never second-guess or recompute within an explanation.',
+        },
+        { role: 'user', content: prompt },
+      ],
       examGenerationJsonSchema,
-      'exam_generation'
+      'exam_generation',
+      0.3
     )
 
     // Save questions to DB

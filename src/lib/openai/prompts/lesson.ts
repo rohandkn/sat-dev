@@ -96,7 +96,6 @@ ${wrongQuestions.length > 0
    - Highlight the key concept or technique needed`
     : ''}
 5. **Key Takeaways** — Summarize the most important points
-6. **Video Resources** — Suggest 2-3 relevant Khan Academy or educational video topics (describe what to search for)
 
 STYLE:
 - Write at a high school level, friendly but not condescending

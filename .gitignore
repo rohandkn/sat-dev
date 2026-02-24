@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#package json
+.claude/settings.local.json
+package-lock.json
+package.json

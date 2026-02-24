@@ -59,6 +59,9 @@ export const examGenerationJsonSchema = {
         type: 'object' as const,
         properties: {
           question_text: { type: 'string' as const },
+          // explanation is generated BEFORE correct_answer so the model solves
+          // the math first and picks the letter that matches its work — not the reverse.
+          explanation: { type: 'string' as const },
           choices: {
             type: 'object' as const,
             properties: {
@@ -71,9 +74,8 @@ export const examGenerationJsonSchema = {
             additionalProperties: false,
           },
           correct_answer: { type: 'string' as const, enum: ['A', 'B', 'C', 'D'] },
-          explanation: { type: 'string' as const },
         },
-        required: ['question_text', 'choices', 'correct_answer', 'explanation'],
+        required: ['question_text', 'explanation', 'choices', 'correct_answer'],
         additionalProperties: false,
       },
     },

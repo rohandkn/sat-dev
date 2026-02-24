@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { calculateScore } from '@/lib/learning-loop/scoring'
+import { calculateScore, gradeAnswer } from '@/lib/learning-loop/scoring'
 import { canTransition, getNextState } from '@/lib/learning-loop/state-machine'
 import { z } from 'zod'
 
@@ -15,6 +15,12 @@ const requestSchema = z.object({
   examType: z.enum(['pre', 'post', 'remediation']),
   answers: z.array(answerSchema),
 })
+
+const SCORE_FIELDS = {
+  pre: 'pre_exam_score',
+  post: 'post_exam_score',
+  remediation: 'remediation_exam_score',
+} as const
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,69 +50,83 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
-    // Validate state
-    const expectedState = `${examType === 'pre' ? 'pre' : examType === 'post' ? 'post' : 'remediation'}_exam_active`
+    // Guard: examType maps directly to its state prefix (e.g. 'post' → 'post_exam_active')
+    const expectedState = `${examType}_exam_active`
     if (session.state !== expectedState) {
       return NextResponse.json({ error: `Session not in ${expectedState} state` }, { status: 400 })
     }
 
-    // Grade answers
-    const results = []
-    for (const answer of answers) {
-      const { data: question } = await supabase
-        .from('exam_questions')
-        .select('*')
-        .eq('id', answer.questionId)
-        .eq('user_id', user.id)
-        .single()
+    // Fetch all questions in one round-trip
+    const questionIds = answers.map(a => a.questionId)
+    const { data: questions, error: questionsError } = await supabase
+      .from('exam_questions')
+      .select('*')
+      .in('id', questionIds)
+      .eq('user_id', user.id)
 
-      if (!question) continue
+    if (questionsError || !questions) {
+      return NextResponse.json({ error: 'Failed to fetch questions' }, { status: 500 })
+    }
 
-      const isCorrect = !answer.isIdk && answer.answer === question.correct_answer
+    const questionMap = new Map(questions.map(q => [q.id, q]))
 
-      await supabase
-        .from('exam_questions')
-        .update({
-          user_answer: answer.answer,
-          is_correct: isCorrect,
-          is_idk: answer.isIdk,
-        })
-        .eq('id', answer.questionId)
-
-      results.push({
+    // Grade all answers in memory
+    const results = answers.flatMap(answer => {
+      const question = questionMap.get(answer.questionId)
+      if (!question) return []
+      const isCorrect = gradeAnswer({
+        answer: answer.answer,
+        isIdk: answer.isIdk,
+        correctAnswer: question.correct_answer,
+      })
+      return [{
         questionId: answer.questionId,
         isCorrect,
         isIdk: answer.isIdk,
+        userAnswer: answer.answer,
         correctAnswer: question.correct_answer,
         explanation: question.explanation,
-      })
+      }]
+    })
+
+    // Write all graded answers in one upsert
+    const questionUpdates = results.map(r => {
+      const original = questionMap.get(r.questionId)!
+      return {
+        ...original,
+        user_answer: r.userAnswer,
+        is_correct: r.isCorrect,
+        is_idk: r.isIdk,
+      }
+    })
+
+    const { error: upsertError } = await supabase
+      .from('exam_questions')
+      .upsert(questionUpdates, { onConflict: 'id' })
+
+    if (upsertError) {
+      return NextResponse.json({ error: 'Failed to save answers' }, { status: 500 })
     }
 
     const score = calculateScore(results.map(r => ({ is_correct: r.isCorrect })))
     const hasWrongAnswers = results.some(r => !r.isCorrect || r.isIdk)
 
-    // Update session state and score
-    const completedState = `${examType === 'pre' ? 'pre' : examType === 'post' ? 'post' : 'remediation'}_exam_completed`
+    // Determine next state
+    const completedState = `${examType}_exam_completed`
     if (!canTransition(session.state, completedState)) {
       return NextResponse.json({ error: 'Invalid state transition' }, { status: 400 })
     }
 
-    const scoreField = examType === 'pre' ? 'pre_exam_score'
-      : examType === 'post' ? 'post_exam_score'
-        : 'remediation_exam_score'
-
     const updates: Record<string, unknown> = {
       state: completedState,
-      [scoreField]: score,
+      [SCORE_FIELDS[examType]]: score,
       updated_at: new Date().toISOString(),
     }
 
-    // For post/remediation exams, determine next state
     let nextState = completedState
     if (examType === 'post' || examType === 'remediation') {
       nextState = getNextState(completedState, {
         examScore: score,
-        hasWrongAnswers,
         remediationLoopCount: session.remediation_loop_count,
       })
 

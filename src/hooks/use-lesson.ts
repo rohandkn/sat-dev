@@ -40,14 +40,30 @@ export function useLesson() {
       const decoder = new TextDecoder()
       let accumulated = ''
 
+      // Throttle React state updates to ~60 fps via requestAnimationFrame.
+      // Without this, setContent fires on every network chunk (100+ times/sec),
+      // causing constant DOM thrashing and visible flicker.
+      let pendingRafId: number | null = null
+      let pendingText = ''
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const text = decoder.decode(value, { stream: true })
-        accumulated += text
-        setContent(accumulated)
+        accumulated += decoder.decode(value, { stream: true })
+        pendingText = accumulated
+
+        if (pendingRafId === null) {
+          pendingRafId = requestAnimationFrame(() => {
+            setContent(pendingText)
+            pendingRafId = null
+          })
+        }
       }
+
+      // Cancel any pending frame and flush the final complete content.
+      if (pendingRafId !== null) cancelAnimationFrame(pendingRafId)
+      setContent(accumulated)
 
       setStreaming(false)
       setComplete(true)

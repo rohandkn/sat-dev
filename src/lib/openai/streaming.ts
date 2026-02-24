@@ -39,14 +39,15 @@ export async function streamChatCompletion(
 export async function jsonChatCompletion<T>(
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   jsonSchema: Record<string, unknown>,
-  schemaName: string
+  schemaName: string,
+  temperature = 0.7
 ): Promise<T> {
   const openai = getOpenAIClient()
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages,
-    temperature: 0.7,
+    temperature,
     response_format: {
       type: 'json_schema',
       json_schema: {

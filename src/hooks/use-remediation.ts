@@ -45,26 +45,50 @@ export function useRemediation() {
       }
 
       const newThreadId = res.headers.get('X-Thread-Id')
-      if (newThreadId) setThreadId(newThreadId)
 
-      setLoading(false)
-      setStreaming(true)
+      if (newThreadId) {
+        // New thread — response is a text stream
+        setThreadId(newThreadId)
+        setLoading(false)
+        setStreaming(true)
 
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('No response body')
+        const reader = res.body?.getReader()
+        if (!reader) throw new Error('No response body')
 
-      const decoder = new TextDecoder()
-      let accumulated = ''
+        const decoder = new TextDecoder()
+        let accumulated = ''
+        let pendingRafId: number | null = null
+        let pendingText = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        accumulated += decoder.decode(value, { stream: true })
+          accumulated += decoder.decode(value, { stream: true })
+          pendingText = accumulated
+
+          if (pendingRafId === null) {
+            pendingRafId = requestAnimationFrame(() => {
+              setMessages([{ role: 'assistant', content: pendingText }])
+              pendingRafId = null
+            })
+          }
+        }
+
+        if (pendingRafId !== null) cancelAnimationFrame(pendingRafId)
         setMessages([{ role: 'assistant', content: accumulated }])
+        setStreaming(false)
+      } else {
+        // Existing thread — response is JSON with thread + messages
+        const data = await res.json()
+        setThreadId(data.thread.id)
+        setMessages((data.messages ?? []).map((m: { role: string; content: string }) => ({
+          role: m.role as 'assistant' | 'user',
+          content: m.content,
+        })))
+        setIsResolved(data.thread.is_resolved)
+        setLoading(false)
       }
-
-      setStreaming(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start remediation')
       setLoading(false)

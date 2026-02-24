@@ -9,30 +9,31 @@ interface KatexRendererProps {
   className?: string
 }
 
-function renderLatex(text: string): string {
-  // Replace display math $$...$$ first
-  let result = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
-    try {
-      return katex.renderToString(math.trim(), {
-        displayMode: true,
-        throwOnError: false,
-      })
-    } catch {
-      return `<span class="text-destructive">[Math Error]</span>`
-    }
-  })
+function renderMath(math: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(math, { displayMode, throwOnError: false })
+  } catch {
+    return `<span class="text-destructive">[Math Error]</span>`
+  }
+}
 
-  // Replace inline math $...$
-  result = result.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
-    try {
-      return katex.renderToString(math.trim(), {
-        displayMode: false,
-        throwOnError: false,
-      })
-    } catch {
-      return `<span class="text-destructive">[Math Error]</span>`
-    }
-  })
+function renderLatex(text: string): string {
+  // 1. Display math — \[...\] and $$...$$
+  let result = text
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, m) => renderMath(m.trim(), true))
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, m) => renderMath(m.trim(), true))
+
+  // 2. Inline math — \(...\) and $...$
+  result = result
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, m) => renderMath(m.trim(), false))
+    .replace(/\$([^\$\n]+?)\$/g, (_, m) => renderMath(m.trim(), false))
+
+  // 3. Bare LaTeX fractions without any delimiter (e.g. GPT omitting $ around choices).
+  //    Handles one level of inner braces: \frac{x+1}{2} or \frac{2}{3}.
+  result = result.replace(
+    /\\frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g,
+    (match) => renderMath(match, false)
+  )
 
   return result
 }

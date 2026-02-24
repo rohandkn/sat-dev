@@ -1,15 +1,27 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { useExam } from '@/hooks/use-exam'
-import { QuestionCard } from '@/components/exam/question-card'
-import { ExamProgress } from '@/components/exam/exam-progress'
-import { ExamResults } from '@/components/exam/exam-results'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { createClient } from '@/lib/supabase/client'
+import { ExamPage } from '@/components/exam/exam-page'
 import { PASS_THRESHOLD } from '@/lib/learning-loop/scoring'
+import { Skeleton } from '@/components/ui/skeleton'
+
+// States that indicate the post exam is already completed
+const POST_EXAM_DONE_STATES = [
+  'remediation_active',
+  'remediation_lesson_pending',
+  'remediation_lesson_active',
+  'remediation_lesson_completed',
+  'remediation_exam_pending',
+  'remediation_exam_active',
+  'remediation_exam_completed',
+  'session_passed',
+  'session_failed',
+]
+
+// States that indicate the remediation exam is already completed for this loop
+const REMEDIATION_EXAM_DONE_STATES = ['session_passed', 'session_failed', 'remediation_active']
 
 export default function PostExamPage() {
   const router = useRouter()
@@ -17,172 +29,100 @@ export default function PostExamPage() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get('session')
   const examType = (searchParams.get('type') === 'remediation' ? 'remediation' : 'post') as 'post' | 'remediation'
-  const [sessionState, setSessionState] = useState<string | null>(null)
+  const topicSlug = pathname.split('/topics/')[1]?.split('/')[0] ?? ''
 
-  const {
-    questions,
-    currentQuestion,
-    currentIndex,
-    currentAnswer,
-    totalQuestions,
-    hasAnsweredAll,
-    loading,
-    submitting,
-    results,
-    error,
-    generateExam,
-    selectAnswer,
-    selectIdk,
-    submitExam,
-    goToNext,
-    goToPrev,
-  } = useExam()
+  // checking = true while we verify the session state; prevents ExamPage from
+  // firing init() and calling generateExam against an already-completed session.
+  const [checking, setChecking] = useState(true)
 
-  // Transition session state before generating
   useEffect(() => {
-    if (!sessionId || questions.length > 0 || loading || results) return
+    if (!sessionId) return
 
-    async function prepareAndGenerate() {
-      const supabase = createClient()
-      const { data: session } = await supabase
-        .from('learning_sessions')
-        .select('state')
-        .eq('id', sessionId!)
-        .single()
+    const supabase = createClient()
+    supabase
+      .from('learning_sessions')
+      .select('state')
+      .eq('id', sessionId)
+      .single()
+      .then(({ data: session }) => {
+        if (!session) {
+          router.replace('/dashboard')
+          return
+        }
 
-      if (!session) return
+        const doneStates = examType === 'post' ? POST_EXAM_DONE_STATES : REMEDIATION_EXAM_DONE_STATES
+        if (doneStates.includes(session.state)) {
+          if (session.state === 'session_passed' || session.state === 'session_failed') {
+            router.replace(`/topics/${topicSlug}`)
+          } else {
+            router.replace(`/topics/${topicSlug}/review?session=${sessionId}`)
+          }
+          return
+        }
 
-      const pendingState = examType === 'post' ? 'post_exam_pending' : 'remediation_exam_pending'
-      if (session.state === 'lesson_completed' || session.state === 'remediation_lesson_completed') {
-        await supabase
-          .from('learning_sessions')
-          .update({ state: pendingState, updated_at: new Date().toISOString() })
-          .eq('id', sessionId!)
-        setSessionState(pendingState)
+        setChecking(false)
+      })
+  }, [sessionId, examType, topicSlug, router])
+
+  const handleReady = useCallback(async () => {
+    const pendingState = examType === 'post' ? 'post_exam_pending' : 'remediation_exam_pending'
+    await fetch('/api/session/transition', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, targetState: pendingState }),
+    })
+  }, [sessionId, examType])
+
+  const handleResultsReady = useCallback((id: string) => {
+    fetch('/api/student-model/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: id, examType }),
+    }).catch(console.error)
+  }, [examType])
+
+  const handleContinue = useCallback(
+    ({ score, topicSlug, sessionId: id }: { score: number; topicSlug: string; sessionId: string }) => {
+      if (score >= PASS_THRESHOLD) {
+        router.push(`/topics/${topicSlug}`)
       } else {
-        setSessionState(session.state)
+        router.push(`/topics/${topicSlug}/review?session=${id}`)
       }
+    },
+    [router]
+  )
 
-      generateExam(sessionId!, examType)
-    }
-
-    prepareAndGenerate()
-  }, [sessionId, questions.length, loading, results, examType, generateExam])
-
-  // Trigger student model update after results — must be before any early returns
-  useEffect(() => {
-    if (results && sessionId) {
-      fetch('/api/student-model/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, examType }),
-      }).catch(console.error)
-    }
-  }, [results, sessionId, examType])
+  const getContinueLabel = useCallback(
+    (score: number) => score >= PASS_THRESHOLD ? 'Continue to Next Topic' : 'Start Review & Remediation',
+    []
+  )
 
   if (!sessionId) {
     router.push('/dashboard')
     return null
   }
 
-  const topicSlug = pathname.split('/topics/')[1]?.split('/')[0]
-
-  if (error) {
-    return (
-      <div className="max-w-2xl mx-auto text-center space-y-4 py-12">
-        <p className="text-destructive">{error}</p>
-        <Button onClick={() => generateExam(sessionId, examType)}>Try Again</Button>
-      </div>
-    )
-  }
-
-  if (loading) {
+  if (checking) {
     return (
       <div className="max-w-2xl mx-auto space-y-6 py-8">
-        <div className="text-center space-y-2">
-          <h2 className="text-xl font-semibold">
-            Generating your {examType === 'remediation' ? 'remediation' : 'post'}-exam...
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            Creating questions to test what you&apos;ve learned
-          </p>
-        </div>
+        <Skeleton className="h-8 w-64 mx-auto" />
         <Skeleton className="h-64 w-full" />
       </div>
     )
   }
 
-  if (results) {
-    const passed = results.score >= PASS_THRESHOLD
-
-    function handleContinue() {
-      if (passed) {
-        router.push(`/topics/${topicSlug}`)
-      } else {
-        router.push(`/topics/${topicSlug}/review?session=${sessionId}`)
-      }
-    }
-
-    return (
-      <ExamResults
-        score={results.score}
-        results={results.results}
-        questions={questions.map(q => {
-          const r = results.results.find(r => r.questionId === q.id)
-          return {
-            ...q,
-            user_answer: r?.isIdk ? null : (r?.correctAnswer ?? null),
-            is_idk: r?.isIdk ?? false,
-          }
-        })}
-        examType={examType}
-        onContinue={handleContinue}
-        continueLabel={passed ? 'Continue to Next Topic' : 'Start Review & Remediation'}
-      />
-    )
-  }
-
-  if (!currentQuestion) return null
+  const heading = examType === 'remediation' ? 'Remediation Exam' : 'Post-Exam: Assessment'
 
   return (
-    <div className="space-y-6 py-4">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold">
-          {examType === 'remediation' ? 'Remediation Exam' : 'Post-Exam: Assessment'}
-        </h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Show what you&apos;ve learned!
-        </p>
-      </div>
-
-      <ExamProgress currentQuestion={currentIndex + 1} totalQuestions={totalQuestions} />
-
-      <QuestionCard
-        questionNumber={currentIndex + 1}
-        totalQuestions={totalQuestions}
-        questionText={currentQuestion.question_text}
-        choices={currentQuestion.choices as Record<string, string>}
-        selectedAnswer={currentAnswer?.isIdk ? null : (currentAnswer?.answer ?? null)}
-        isIdk={currentAnswer?.isIdk ?? false}
-        onSelectAnswer={(answer) => selectAnswer(currentQuestion.id, answer)}
-        onIdk={() => selectIdk(currentQuestion.id)}
-      />
-
-      <div className="flex justify-between max-w-2xl mx-auto">
-        <Button variant="outline" onClick={goToPrev} disabled={currentIndex === 0}>
-          Previous
-        </Button>
-        {currentIndex < totalQuestions - 1 ? (
-          <Button onClick={goToNext}>Next</Button>
-        ) : (
-          <Button
-            onClick={() => submitExam(sessionId, examType)}
-            disabled={submitting || !hasAnsweredAll}
-          >
-            {submitting ? 'Submitting...' : 'Submit Exam'}
-          </Button>
-        )}
-      </div>
-    </div>
+    <ExamPage
+      examType={examType}
+      sessionId={sessionId}
+      heading={heading}
+      subheading="Show what you've learned!"
+      continueLabel={getContinueLabel}
+      onContinue={handleContinue}
+      onReady={handleReady}
+      onResultsReady={handleResultsReady}
+    />
   )
 }
