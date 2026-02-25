@@ -17,11 +17,66 @@ function renderMath(math: string, displayMode: boolean): string {
   }
 }
 
-function renderLatex(text: string): string {
-  // ── 0. Fix missing spaces between words and numbers / math variables ──
+// Preprocess text before KaTeX rendering to fix structural issues.
+function preprocessKatex(text: string): string {
+  let result = text
 
-  // 0a: word (2+ letters) → digit
-  let result = text.replace(/([a-z]{2,})(\d)/gi, '$1 $2')
+  // Strip outer [ ] brackets from display-math-style expressions.
+  // GPT sometimes writes "[ 6x = 12 ]" or "$[ 6x = 12 ]$" instead of proper
+  // display math. Remove the brackets so only the equation shows.
+  // Handles both: bare "[ expr ]" and inside delimiters "$[ expr ]$"
+  result = result.replace(/\$\[\s*([\s\S]*?)\s*\]\$/g, (_, inner) => `$${inner.trim()}$`)
+  result = result.replace(/\$\$\[\s*([\s\S]*?)\s*\]\$\$/g, (_, inner) => `$$${inner.trim()}$$`)
+  result = result.replace(/\\\[\[\s*([\s\S]*?)\s*\]\\\]/g, (_, inner) => `\\[${inner.trim()}\\]`)
+
+  // Split consecutive display-math or bracketed-equation blocks onto separate
+  // lines so each step renders on its own line.
+  // "[expr1] [expr2]" → "[expr1]\n[expr2]"
+  // "\[expr1\] \[expr2\]" → "\[expr1\]\n\[expr2\]"
+  // "$$expr1$$ $$expr2$$" → "$$expr1$$\n$$expr2$$"
+  result = result.replace(/\\\]\s*\\\[/g, '\\]\n\\[')
+  result = result.replace(/\$\$([^$]+)\$\$\s*\$\$/g, '$$$1$$\n$$')
+
+  // Split consecutive inline $..$ blocks that look like equation/inequality
+  // steps onto separate lines. Matches expressions containing =, <, >,
+  // \leq, \geq, \neq, or similar comparison operators.
+  const hasComparison = (s: string) => /[=<>]|\\leq|\\geq|\\neq|\\le\b|\\ge\b/.test(s)
+  // Use [ \t]+ (horizontal whitespace only) so already-split pairs
+  // separated by \n don't re-match and stall the loop.
+  let prev = ''
+  while (prev !== result) {
+    prev = result
+    result = result.replace(
+      /\$([^$\n]+)\$[ \t]+\$([^$\n]+)\$/g,
+      (match, a, b) => hasComparison(a) && hasComparison(b) ? `$${a}$\n$${b}$` : match
+    )
+  }
+
+  return result
+}
+
+function renderLatex(text: string): string {
+  // ── Pre-processing: structural fixes ──
+  let result = preprocessKatex(text)
+
+  // ── 0. Recover LaTeX commands corrupted by JSON \n interpretation ──
+  // \neq → newline + "eq", \frac → form-feed + "rac", etc.
+  result = result.replace(/\n(eq|eg|u|abla|ot|otin|i|leq|geq|mid)(?![a-zA-Z])/g, '\\n$1')
+  result = result.replace(/\t(ext|extbf|extit|imes|heta|an|o\b|op|riangle|ilde)(?![a-zA-Z])/g, '\\t$1')
+  result = result.replace(/\r(ight|angle|ceil|floor|ho)(?![a-zA-Z])/g, '\\r$1')
+  result = result.replace(/\f(rac|orall)(?![a-zA-Z])/g, '\\f$1')
+  result = result.replace(/\x08(oxed|inom|eta|ar|egin|mod)(?![a-zA-Z])/g, '\\b$1')
+
+  // ── 0a. Fix missing spaces between words and numbers / math variables ──
+
+  // 0a1: word (2+ letters) → digit
+  result = result.replace(/([a-z]{2,})(\d)/gi, '$1 $2')
+
+  // 0a2: colon directly followed by a letter, digit, $ or \ — add space.
+  result = result.replace(/:([a-zA-Z0-9$\\])/g, ': $1')
+
+  // 0a3: word → negative number: "by-2" → "by -2"
+  result = result.replace(/([a-zA-Z])(-)(\d)/g, '$1 $2$3')
 
   // 0b + 0c + 0d combined iterative loop (same logic as markdown-renderer)
   let prev = ''
@@ -34,12 +89,12 @@ function renderLatex(text: string): string {
     )
     // digit → word
     result = result.replace(
-      /(\d)(into|and|or|back|from|with|that|this|then|when|where|since|are|but|if|in|at|by|on|as|is|for|so|to)/gi,
+      /(\d)(into|and|or|back|from|with|that|this|then|when|where|since|are|but|if|in|at|by|on|as|is|for|so|to|gives|both|sides|dividing|multiplying|subtracting|adding|becomes|means|get|gets|yields|result)/gi,
       '$1 $2'
     )
     // variable → word
     result = result.replace(
-      /([xyzXYZ])(into|and|back|from|with|that|this|then|when|where|since)/g,
+      /([xyzXYZ])(into|and|back|from|with|that|this|then|when|where|since|gives|both|sides|dividing|multiplying|becomes|means)/g,
       '$1 $2'
     )
   }
@@ -81,6 +136,10 @@ function renderLatex(text: string): string {
     /(\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta))(?!\w)/g,
     (_, cmd) => renderMath(cmd, false)
   )
+
+  // 4. Convert remaining newlines to <br> so step-split equations render
+  //    on separate lines in the HTML output.
+  result = result.replace(/\n/g, '<br>')
 
   return result
 }

@@ -124,7 +124,7 @@ export function RemediationChat({
             {isResolved && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] rounded-lg px-4 py-3 text-sm bg-muted font-medium">
-                  Awesome, you got the correct answer: <strong>{correctAnswer}</strong>
+                  Awesome, you now know how to derive the correct answer: <strong>{correctAnswer}</strong>
                 </div>
               </div>
             )}

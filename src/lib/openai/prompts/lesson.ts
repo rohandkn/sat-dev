@@ -86,6 +86,8 @@ MATH FORMATTING (critical — follow EVERY rule exactly):
 - Even single variables like x, y, z MUST be wrapped: WRONG: "solve for y" — CORRECT: "solve for $y$"
 - NEVER write bare LaTeX commands outside math delimiters — WRONG: \frac{2}{3} — CORRECT: $\frac{2}{3}$
 - NEVER write bare \left or \right outside $...$ — WRONG: \left(4\right) — CORRECT: $\left(4\right)$
+- For inequalities, ALWAYS use LaTeX commands INSIDE $...$: WRONG: x \leq 3 — CORRECT: $x \leq 3$
+- Keep the ENTIRE inequality expression in ONE $...$: WRONG: $x$ \leq $3$ — CORRECT: $x \leq 3$
 - NEVER put a space before the closing $ — WRONG: $y = 4x - 2 $ — CORRECT: $y = 4x - 2$
 - NEVER put a space after the opening $ — WRONG: $ y = 4x$ — CORRECT: $y = 4x$
 - NEVER leave a lone $ without a matching closing $ on the same line
@@ -109,6 +111,20 @@ ${wrongQuestions.length > 0
    - Highlight the key concept or technique needed`
     : ''}
 5. **Key Takeaways** — Summarize the most important points
+
+STEP-BY-STEP FORMATTING (critical):
+- When showing algebraic steps, put EACH step on its OWN line using display math ($$...$$)
+- This applies to BOTH equations (=) AND inequalities (\leq, \geq, <, >)
+- WRONG (all on one line): "$6x = 12$ $x = 2$"
+- WRONG (inequalities on one line): "$-2x \geq 8$ $x \leq -4$"
+- CORRECT (each step on its own line):
+  $$6x = 12$$
+  $$x = 2$$
+- CORRECT (inequality steps on separate lines):
+  $$-2x \geq 8$$
+  $$x \leq -4$$
+- NEVER wrap display equations in square brackets — WRONG: "$$[ 6x = 12 ]$$" — CORRECT: "$$6x = 12$$"
+- NEVER use \\[...\\] notation for display math — use $$...$$ instead
 
 STYLE:
 - Write at a high school level, friendly but not condescending

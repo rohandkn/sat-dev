@@ -48,12 +48,16 @@ export default function ReviewPage() {
 
       setSession(sessionData)
 
-      // Get wrong questions from the most recent post exam
+      // After the first post-exam failure (remediation_loop_count = 1) show
+      // post-exam wrong questions.  After a remediation exam failure
+      // (remediation_loop_count > 1) show the remediation exam's wrong questions.
+      const examType = (sessionData?.remediation_loop_count ?? 0) > 1 ? 'remediation' : 'post'
+
       const { data: questions } = await supabase
         .from('exam_questions')
         .select('*')
         .eq('session_id', sessionId!)
-        .eq('exam_type', 'post')
+        .eq('exam_type', examType)
         .or('is_correct.eq.false,is_idk.eq.true')
         .order('question_number')
 

@@ -53,13 +53,62 @@ function replaceOutsideMath(
 }
 
 function preprocessMarkdownMath(text: string): string {
+  // ── Step -1 ────────────────────────────────────────────────────────
+  // Recover LaTeX commands corrupted by JSON \n interpretation.
+  // \neq → newline + "eq", \frac → form-feed + "rac", etc.
+  let result = text
+  result = result.replace(/\n(eq|eg|u|abla|ot|otin|i|leq|geq|mid)(?![a-zA-Z])/g, '\\n$1')
+  result = result.replace(/\t(ext|extbf|extit|imes|heta|an|o\b|op|riangle|ilde)(?![a-zA-Z])/g, '\\t$1')
+  result = result.replace(/\r(ight|angle|ceil|floor|ho)(?![a-zA-Z])/g, '\\r$1')
+  result = result.replace(/\f(rac|orall)(?![a-zA-Z])/g, '\\f$1')
+  result = result.replace(/\x08(oxed|inom|eta|ar|egin|mod)(?![a-zA-Z])/g, '\\b$1')
+
+  // ── Step 0 ─────────────────────────────────────────────────────────
+  // Structural fixes: brackets around display math and step splitting.
+
+  // 0a: Strip outer [ ] brackets from display math.
+  //     GPT writes "$$[ expr ]$$" or "\[[ expr ]\]" — remove the inner brackets.
+  result = result.replace(/\$\$\[\s*([\s\S]*?)\s*\]\$\$/g, (_, inner) => `$$${inner.trim()}$$`)
+  result = result.replace(/\\\[\[\s*([\s\S]*?)\s*\]\\\]/g, (_, inner) => `\\[${inner.trim()}\\]`)
+
+  // 0b: Convert \[...\] display math to $$...$$ for more reliable remark-math
+  //     parsing (avoids CommonMark treating \[ as an escaped bracket).
+  result = result.replace(/\\\[([\s\S]*?)\\\]/g, (_, inner) => `$$${inner}$$`)
+
+  // 0c: Split consecutive display math blocks onto separate lines.
+  result = result.replace(/\$\$([^$]+)\$\$\s*\$\$/g, '$$$1$$\n$$')
+
+  // 0d: Split consecutive inline $..$ blocks that both contain comparison
+  //     operators (=, <, >, \leq, \geq, \neq) onto separate lines so each
+  //     algebraic step appears on its own line.
+  const hasComparison = (s: string) => /[=<>]|\\leq|\\geq|\\neq|\\le\b|\\ge\b/.test(s)
+  {
+    let p = ''
+    while (p !== result) {
+      p = result
+      // Use [ \t]+ (horizontal whitespace only) so already-split pairs
+      // separated by \n don't re-match and stall the loop.
+      result = result.replace(
+        /\$([^$\n]+)\$[ \t]+\$([^$\n]+)\$/g,
+        (match, a, b) => hasComparison(a) && hasComparison(b) ? `$${a}$\n$${b}$` : match
+      )
+    }
+  }
+
   // ── Step 1 ─────────────────────────────────────────────────────────
   // Fix missing spaces between words and numbers / math variables.
   // All sub-steps run in one iterative loop so cascading fixes like
   // "ofywhenx" → "of ywhenx" → "of y whenx" → "of y when x" resolve.
 
   // 1a: word (2+ letters) → digit:  "and2x" → "and 2x"
-  let result = text.replace(/([a-z]{2,})(\d)/gi, '$1 $2')
+  result = result.replace(/([a-z]{2,})(\d)/gi, '$1 $2')
+
+  // 1a2: colon directly followed by a letter, digit, $ or \ — add space.
+  //      Fixes "find x:x = 2" → "find x: x = 2"
+  result = result.replace(/:([a-zA-Z0-9$\\])/g, ': $1')
+
+  // 1a3: word → negative number: "by-2" → "by -2"
+  result = result.replace(/([a-zA-Z])(-)(\d)/g, '$1 $2$3')
 
   // 1b + 1c + 1d combined iterative loop:
   //   1b: common-word → math variable   ("ofy" → "of y")
@@ -77,12 +126,12 @@ function preprocessMarkdownMath(text: string): string {
     )
     // 1c: digit → word
     result = result.replace(
-      /(\d)(into|and|or|back|from|with|that|this|then|when|where|since|are|but|if|in|at|by|on|as|is|for|so|to)/gi,
+      /(\d)(into|and|or|back|from|with|that|this|then|when|where|since|are|but|if|in|at|by|on|as|is|for|so|to|gives|both|sides|dividing|multiplying|subtracting|adding|becomes|means|get|gets|yields|result)/gi,
       '$1 $2'
     )
     // 1d: variable → word
     result = result.replace(
-      /([xyzXYZ])(into|and|back|from|with|that|this|then|when|where|since)/g,
+      /([xyzXYZ])(into|and|back|from|with|that|this|then|when|where|since|gives|both|sides|dividing|multiplying|becomes|means)/g,
       '$1 $2'
     )
   }
@@ -119,7 +168,15 @@ function preprocessMarkdownMath(text: string): string {
     (match) => `$${match}$`
   )
 
-  // 3d: Other common bare LaTeX operators
+  // 3d: Bare inequality expressions: "5x \leq 15" → "$5x \leq 15$"
+  //     Must come BEFORE 3e (bare operators) so the full expression is wrapped.
+  result = replaceOutsideMath(
+    result,
+    /([a-zA-Z0-9][a-zA-Z0-9\s+\-*/^{}(),.]*?)\s*(\\(?:leq|geq|neq|le|ge))\s*([a-zA-Z0-9\-+][a-zA-Z0-9\s+\-*/^{}(),.]*[a-zA-Z0-9)}\]])/g,
+    (match) => `$${match.trim()}$`
+  )
+
+  // 3e: Other common bare LaTeX operators
   result = replaceOutsideMath(
     result,
     /(\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta))(?!\w)/g,
