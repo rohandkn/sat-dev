@@ -21,6 +21,12 @@ function renderMath(math: string, displayMode: boolean): string {
 function preprocessKatex(text: string): string {
   let result = text
 
+  // Strip redundant \($...$\) → $...$  (LLM mixing delimiter styles)
+  result = result.replace(/\\\(\s*\$([^$\n]+?)\$\s*\\\)/g, (_, inner) => `$${inner}$`)
+
+  // Convert \(...\) inline math to $...$ for consistent processing
+  result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_, inner) => `$${inner}$`)
+
   // Strip outer [ ] brackets from display-math-style expressions.
   // GPT sometimes writes "[ 6x = 12 ]" or "$[ 6x = 12 ]$" instead of proper
   // display math. Remove the brackets so only the equation shows.
@@ -131,9 +137,15 @@ function renderLatex(text: string): string {
     (match) => renderMath(match, false)
   )
 
-  // 3d: Other common bare LaTeX operators
+  // 3d: Compound \not commands (\not\leq, \not\geq, etc.)
   result = result.replace(
-    /(\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta))(?!\w)/g,
+    /(\\not\s*\\(?:leq|geq|neq|le|ge|in))(?!\w)/g,
+    (_, cmd) => renderMath(cmd, false)
+  )
+
+  // 3e: Other common bare LaTeX operators
+  result = result.replace(
+    /(\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta|not))(?!\w)/g,
     (_, cmd) => renderMath(cmd, false)
   )
 

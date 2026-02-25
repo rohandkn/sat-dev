@@ -125,6 +125,7 @@ STEP-BY-STEP FORMATTING (critical):
   $$x \leq -4$$
 - NEVER wrap display equations in square brackets — WRONG: "$$[ 6x = 12 ]$$" — CORRECT: "$$6x = 12$$"
 - NEVER use \\[...\\] notation for display math — use $$...$$ instead
+- NEVER use \\(...\\) notation for inline math — use $...$ instead
 
 STYLE:
 - Write at a high school level, friendly but not condescending

@@ -75,6 +75,13 @@ function preprocessMarkdownMath(text: string): string {
   //     parsing (avoids CommonMark treating \[ as an escaped bracket).
   result = result.replace(/\\\[([\s\S]*?)\\\]/g, (_, inner) => `$$${inner}$$`)
 
+  // 0b2: Strip redundant \($...$\) → $...$  (LLM mixing delimiter styles)
+  result = result.replace(/\\\(\s*\$([^$\n]+?)\$\s*\\\)/g, (_, inner) => `$${inner}$`)
+
+  // 0b3: Convert \(...\) inline math to $...$ for reliable remark-math parsing
+  //      (same reason as 0b: CommonMark treats \( as an escaped parenthesis).
+  result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_, inner) => `$${inner}$`)
+
   // 0c: Split consecutive display math blocks onto separate lines.
   result = result.replace(/\$\$([^$]+)\$\$\s*\$\$/g, '$$$1$$\n$$')
 
@@ -172,14 +179,21 @@ function preprocessMarkdownMath(text: string): string {
   //     Must come BEFORE 3e (bare operators) so the full expression is wrapped.
   result = replaceOutsideMath(
     result,
-    /([a-zA-Z0-9][a-zA-Z0-9\s+\-*/^{}(),.]*?)\s*(\\(?:leq|geq|neq|le|ge))\s*([a-zA-Z0-9\-+][a-zA-Z0-9\s+\-*/^{}(),.]*[a-zA-Z0-9)}\]])/g,
+    /([a-zA-Z0-9][a-zA-Z0-9\s+\-*/^{}(),.]*?)\s*(\\(?:not\\)?(?:leq|geq|neq|le|ge))\s*([a-zA-Z0-9\-+][a-zA-Z0-9\s+\-*/^{}(),.]*[a-zA-Z0-9)}\]])/g,
     (match) => `$${match.trim()}$`
+  )
+
+  // 3d2: Compound \not commands (\not\leq, \not\geq, etc.)
+  result = replaceOutsideMath(
+    result,
+    /(\\not\s*\\(?:leq|geq|neq|le|ge|in))(?!\w)/g,
+    (_, cmd) => `$${cmd}$`
   )
 
   // 3e: Other common bare LaTeX operators
   result = replaceOutsideMath(
     result,
-    /(\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta))(?!\w)/g,
+    /(\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta|not))(?!\w)/g,
     (_, cmd) => `$${cmd}$`
   )
 
