@@ -87,13 +87,49 @@ export async function POST(request: NextRequest) {
       .single()
 
     // Fetch wrong questions from the relevant exam
-    const examType = lessonType === 'initial' ? 'pre' : 'post'
-    const { data: wrongQuestions } = await supabase
-      .from('exam_questions')
-      .select('*')
-      .eq('session_id', sessionId)
-      .eq('exam_type', examType)
-      .or('is_correct.eq.false,is_idk.eq.true')
+    const examType = lessonType === 'initial'
+      ? 'pre'
+      : (session.remediation_loop_count ?? 0) > 1
+        ? 'remediation'
+        : 'post'
+
+    let wrongQuestions: Array<Record<string, unknown>> | null = null
+
+    if (lessonType === 'remediation') {
+      const { data: latestAttemptRow } = await supabase
+        .from('exam_questions')
+        .select('attempt_number')
+        .eq('session_id', sessionId)
+        .eq('exam_type', 'remediation')
+        .or('user_answer.not.is.null,is_idk.eq.true,is_correct.not.is.null')
+        .order('attempt_number', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const latestAttempt = latestAttemptRow?.attempt_number ?? null
+      if (latestAttempt) {
+        const { data: latestWrong } = await supabase
+          .from('exam_questions')
+          .select('*')
+          .eq('session_id', sessionId)
+          .eq('exam_type', 'remediation')
+          .eq('attempt_number', latestAttempt)
+          .or('is_correct.eq.false,is_idk.eq.true')
+
+        wrongQuestions = latestWrong ?? null
+      }
+    }
+
+    if (!wrongQuestions) {
+      const { data: fallbackWrong } = await supabase
+        .from('exam_questions')
+        .select('*')
+        .eq('session_id', sessionId)
+        .eq('exam_type', examType)
+        .or('is_correct.eq.false,is_idk.eq.true')
+
+      wrongQuestions = fallbackWrong ?? null
+    }
 
     // For remediation lessons, also gather remediation thread insights
     let remediationInsights = ''

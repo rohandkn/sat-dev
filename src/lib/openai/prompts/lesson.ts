@@ -123,6 +123,7 @@ STEP-BY-STEP FORMATTING (critical):
 - CORRECT (inequality steps on separate lines):
   $$-2x \geq 8$$
   $$x \leq -4$$
+- IMPORTANT: Only flip an inequality sign when multiplying/dividing by a negative number for <, >, \leq, \geq. Do NOT flip for \neq.
 - NEVER wrap display equations in square brackets — WRONG: "$$[ 6x = 12 ]$$" — CORRECT: "$$6x = 12$$"
 - NEVER use \\[...\\] notation for display math — use $$...$$ instead
 - NEVER use \\(...\\) notation for inline math — use $...$ instead

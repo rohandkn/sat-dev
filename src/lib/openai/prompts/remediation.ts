@@ -50,6 +50,7 @@ ALWAYS put a SPACE before and after every $...$ expression in prose (WRONG: "the
 NEVER write bare LaTeX like \frac, \left, \leq, \geq, \neq, \not outside $...$ delimiters.
 NEVER use \(...\) — always use $...$ for inline math.
 For inequalities, keep the ENTIRE expression in ONE $...$: WRONG: "$x$ \leq $3$" — CORRECT: "$x \leq 3$".
+IMPORTANT: Only flip an inequality sign when multiplying/dividing by a negative number for <, >, \leq, \geq. Do NOT flip for \neq (not equal).
 Keep your response concise (2-4 sentences plus a question).
 Do NOT start your response with "Tutor:", "Assistant:", or any role label. Begin directly with your message.`
 }
@@ -95,6 +96,7 @@ INSTRUCTIONS:
 - If the student demonstrates clear understanding of the concept, mark the conversation as RESOLVED
 - Keep responses concise (2-4 sentences)
 - Use LaTeX ($...$) for ALL math including single variables — no spaces after opening $ or before closing $, ALWAYS space before and after every $...$ in prose, NEVER write bare LaTeX (\frac, \left, \right, \leq, \geq, \neq, \not) outside $...$. NEVER use \(...\) — use $...$. Keep the ENTIRE inequality in one $...$: CORRECT: "$x \leq 3$"
+- IMPORTANT: Only flip an inequality sign when multiplying/dividing by a negative number for <, >, \leq, \geq. Do NOT flip for \neq (not equal).
 - Be warm and encouraging
 - After 4-5 exchanges, if the student is still struggling, explain the solution clearly and mark as RESOLVED
 - IMPORTANT: Do NOT start your response with "Tutor:", "Assistant:", or any role label. Begin directly with your message.

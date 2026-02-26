@@ -151,6 +151,28 @@ export async function POST(request: NextRequest) {
       .update(updates)
       .eq('id', sessionId)
 
+    // Starting a new remediation loop should reset prior remediation threads/messages
+    // so the chat reflects the latest remediation exam results.
+    if (nextState === 'remediation_active') {
+      const { data: threads } = await supabase
+        .from('remediation_threads')
+        .select('id')
+        .eq('session_id', sessionId)
+
+      const threadIds = (threads ?? []).map(t => t.id)
+      if (threadIds.length > 0) {
+        await supabase
+          .from('remediation_messages')
+          .delete()
+          .in('thread_id', threadIds)
+
+        await supabase
+          .from('remediation_threads')
+          .delete()
+          .eq('session_id', sessionId)
+      }
+    }
+
     // When session is passed, unlock the next topic and mark current as completed
     if (nextState === 'session_passed') {
       await Promise.all([

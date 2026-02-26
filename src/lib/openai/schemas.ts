@@ -20,6 +20,16 @@ export const examGenerationSchema = z.object({
 export type ExamQuestion = z.infer<typeof examQuestionSchema>
 export type ExamGeneration = z.infer<typeof examGenerationSchema>
 
+// Exam validation schema for structured output
+export const examValidationSchema = z.object({
+  results: z.array(z.object({
+    index: z.number().int().min(1),
+    correct_choices: z.array(z.enum(['A', 'B', 'C', 'D'])),
+  })),
+})
+
+export type ExamValidation = z.infer<typeof examValidationSchema>
+
 // Student model update schema
 export const studentModelUpdateSchema = z.object({
   strengths: z.array(z.string()),
@@ -81,6 +91,29 @@ export const examGenerationJsonSchema = {
     },
   },
   required: ['questions'],
+  additionalProperties: false,
+}
+
+export const examValidationJsonSchema = {
+  type: 'object' as const,
+  properties: {
+    results: {
+      type: 'array' as const,
+      items: {
+        type: 'object' as const,
+        properties: {
+          index: { type: 'number' as const },
+          correct_choices: {
+            type: 'array' as const,
+            items: { type: 'string' as const, enum: ['A', 'B', 'C', 'D'] },
+          },
+        },
+        required: ['index', 'correct_choices'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['results'],
   additionalProperties: false,
 }
 

@@ -57,6 +57,12 @@ function preprocessMarkdownMath(text: string): string {
   // Recover LaTeX commands corrupted by JSON \n interpretation.
   // \neq → newline + "eq", \frac → form-feed + "rac", etc.
   let result = text
+  // Normalize Unicode minus (−) to ASCII hyphen for consistent spacing fixes.
+  result = result.replace(/\u2212/g, '-')
+  // Recover bare inequality operators that lost their backslash or were
+  // split by a stray newline (e.g. "x \nleq 3" or "x leq3").
+  result = result.replace(/\n\s*(leq|geq)\b/gi, ' \\\\$1')
+  result = result.replace(/(?<!\\)\b(leq|geq)\b/gi, '\\\\$1')
   result = result.replace(/\n(eq|eg|u|abla|ot|otin|i|leq|geq|mid)(?![a-zA-Z])/g, '\\n$1')
   result = result.replace(/\t(ext|extbf|extit|imes|heta|an|o\b|op|riangle|ilde)(?![a-zA-Z])/g, '\\t$1')
   result = result.replace(/\r(ight|angle|ceil|floor|ho)(?![a-zA-Z])/g, '\\r$1')
@@ -65,6 +71,9 @@ function preprocessMarkdownMath(text: string): string {
 
   // ── Step 0 ─────────────────────────────────────────────────────────
   // Structural fixes: brackets around display math and step splitting.
+  //
+  // NOTE: This step also balances stray $$ delimiters so the renderer
+  // never shows raw $$ in the UI.
 
   // 0a: Strip outer [ ] brackets from display math.
   //     GPT writes "$$[ expr ]$$" or "\[[ expr ]\]" — remove the inner brackets.
@@ -82,8 +91,105 @@ function preprocessMarkdownMath(text: string): string {
   //      (same reason as 0b: CommonMark treats \( as an escaped parenthesis).
   result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_, inner) => `$${inner}$`)
 
+  // 0b4: Balance stray $$ delimiters on a per-line basis.
+  //      If a line has an odd number of $$, add the missing opener/closer.
+  //      This fixes cases like: "x - 4 > 7$$" or "$$x - 4 > 7".
+  {
+    let inDisplay = false
+    result = result.split('\n').map(line => {
+      const count = (line.match(/\$\$/g) || []).length
+      const nonDelimiterContent = line.replace(/\$\$/g, '').trim()
+      if (count % 2 === 1 && nonDelimiterContent.length > 0) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('$$') && !trimmed.endsWith('$$')) {
+          line = `${line}$$`
+        } else if (!trimmed.startsWith('$$') && trimmed.endsWith('$$')) {
+          line = `$$${line}`
+        } else if (inDisplay) {
+          line = `${line}$$`
+        } else {
+          line = `$$${line}$$`
+        }
+      }
+      if (count % 2 === 1) inDisplay = !inDisplay
+      return line
+    }).join('\n')
+  }
+
+  // 0b5: Remove empty display math blocks that would render as raw $$.
+  result = result.replace(/\$\$\s*\$\$/g, '')
+
+  // 0b6: Normalize single-line display math into fenced blocks so
+  //      remark-math always parses them as block math (especially in lists).
+  result = result.split('\n').map(line => {
+    const match = line.match(/^(\s*)\$\$([^$\n]+)\$\$\s*$/)
+    if (!match) return line
+    const indent = match[1]
+    const inner = match[2].trim()
+    return `${indent}$$\n${indent}${inner}\n${indent}$$`
+  }).join('\n')
+
   // 0c: Split consecutive display math blocks onto separate lines.
   result = result.replace(/\$\$([^$]+)\$\$\s*\$\$/g, '$$$1$$\n$$')
+  // 0c2: If two display blocks are adjacent, insert a blank line between them
+  //      so list items render each step on its own line.
+  {
+    let p = ''
+    while (p !== result) {
+      p = result
+      result = result.replace(
+        /\$\$([\s\S]*?)\$\$\s*\$\$([\s\S]*?)\$\$/g,
+        (_, a, b) => `$$${a}$$\n\n$$${b}$$`
+      )
+    }
+  }
+  // 0c3: Ensure display math blocks are isolated by blank lines so Markdown
+  //      renders them as separate blocks (prevents line-collapsing).
+  {
+    const lines = result.split('\n')
+    const withSpacing: string[] = []
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]
+      const hasDisplay = line.includes('$$')
+      const indentMatch = line.match(/^\s*/)
+      const indent = indentMatch ? indentMatch[0] : ''
+      if (hasDisplay) {
+        if (withSpacing.length > 0 && withSpacing[withSpacing.length - 1].trim() !== '') {
+          withSpacing.push(indent)
+        }
+        withSpacing.push(line)
+        if (i + 1 < lines.length && lines[i + 1].trim() !== '') {
+          withSpacing.push(indent)
+        }
+      } else {
+        withSpacing.push(line)
+      }
+    }
+    result = withSpacing.join('\n')
+  }
+
+  // 0c4: If a list item line is immediately followed by display math,
+  //      insert an indented blank line so Markdown treats the $$ block
+  //      as a separate paragraph within the list item.
+  {
+    const lines = result.split('\n')
+    const out: string[] = []
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]
+      out.push(line)
+      const next = lines[i + 1]
+      if (!next) continue
+      const isListItem = /^\s*(?:\d+\.)\s+/.test(line) || /^\s*[-*+]\s+/.test(line)
+      const nextHasDisplay = next.includes('$$')
+      const nextIsBlank = next.trim() === ''
+      if (isListItem && nextHasDisplay && !nextIsBlank) {
+        const indentMatch = next.match(/^\s*/)
+        const indent = indentMatch ? indentMatch[0] : ''
+        out.push(indent)
+      }
+    }
+    result = out.join('\n')
+  }
 
   // 0d: Split consecutive inline $..$ blocks that both contain comparison
   //     operators (=, <, >, \leq, \geq, \neq) onto separate lines so each
@@ -116,6 +222,8 @@ function preprocessMarkdownMath(text: string): string {
 
   // 1a3: word → negative number: "by-2" → "by -2"
   result = result.replace(/([a-zA-Z])(-)(\d)/g, '$1 $2$3')
+  // 1a4: negative number → word: "-2gives" → "-2 gives"
+  result = result.replace(/(-\d+)([a-zA-Z])/g, '$1 $2')
 
   // 1b + 1c + 1d combined iterative loop:
   //   1b: common-word → math variable   ("ofy" → "of y")
@@ -227,7 +335,7 @@ function preprocessMarkdownMath(text: string): string {
   while (prev !== result) {
     prev = result
     result = result.replace(
-      /\$([^$\n]+)\$([\s\d+\-=*]+)\$([^$\n]+)\$/g,
+      /(?<!\$)\$([^$\n]+)\$(?!\$)([\s\d+\-=*]+)(?<!\$)\$([^$\n]+)\$(?!\$)/g,
       (match, a, between, b) => {
         if (/^[\s\d+\-=*]+$/.test(between)) {
           return `$${a}${between}${b}$`
@@ -320,6 +428,15 @@ function preprocessMarkdownMath(text: string): string {
   }).join('\n')
 
   // ── Step 10 ────────────────────────────────────────────────────────
+  // Ensure multiple-choice numeric answers are wrapped in $...$ when the
+  // LLM omits delimiters (e.g., "A) -3, B) 0, C) 1, D) 2").
+  result = replaceOutsideMath(
+    result,
+    /\b([A-E])\)\s*(-?\d+(?:\.\d+)?)(?=[,\s)]|$)/g,
+    (_, label, value) => `${label}) $${value}$`
+  )
+
+  // ── Step 10 ────────────────────────────────────────────────────────
   // Safety net: on any line with an odd number of $ (unbalanced),
   // close an unclosed expression or remove a stray $.
   result = result.split('\n').map(line => {
@@ -337,6 +454,33 @@ function preprocessMarkdownMath(text: string): string {
     }
     return line
   }).join('\n')
+
+  // ── Step 11 ────────────────────────────────────────────────────────
+  // Final spacing cleanup outside math: fix "by-2gives" or "-2gives".
+  result = replaceOutsideMath(
+    result,
+    /([a-zA-Z])-(\d+)([a-zA-Z])/g,
+    (_, a, num, b) => `${a} -${num} ${b}`
+  )
+  result = replaceOutsideMath(
+    result,
+    /([a-zA-Z])-(\d+)/g,
+    (_, a, num) => `${a} -${num}`
+  )
+  result = replaceOutsideMath(
+    result,
+    /(-\d+)([a-zA-Z])/g,
+    (_, num, b) => `${num} ${b}`
+  )
+
+  // ── Step 12 ────────────────────────────────────────────────────────
+  // Split consecutive inequality steps that are stuck together without
+  // delimiters: "2y > 12 - 4xy > 6 - 2x" → two lines.
+  result = replaceOutsideMath(
+    result,
+    /([=<>]|\\leq|\\geq|\\neq)\s*([\-]?\d+[a-zA-Z])/g,
+    (match, op, next) => `${op} ${next.replace(/([a-zA-Z])/, '\n$1')}`
+  )
 
   return result
 }

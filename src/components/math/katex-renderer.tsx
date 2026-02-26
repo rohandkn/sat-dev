@@ -21,6 +21,18 @@ function renderMath(math: string, displayMode: boolean): string {
 function preprocessKatex(text: string): string {
   let result = text
 
+  // Convert literal "\n" sequences to real newlines, but avoid LaTeX commands
+  // like "\neq" that also start with "\n".
+  result = result.replace(/\\n(?!eq\b|eg\b|u\b|abla|ot\b|otin|i\b|leq|geq|mid)/g, '\n')
+
+  // Normalize Unicode minus (−) to ASCII hyphen for consistent spacing fixes.
+  result = result.replace(/\u2212/g, '-')
+
+  // Recover bare inequality operators that lost their backslash or were
+  // split by a stray newline (e.g. "x \nleq 3" or "x leq3").
+  result = result.replace(/\n\s*(leq|geq)\b/gi, ' \\\\$1')
+  result = result.replace(/(?<!\\)\b(leq|geq)\b/gi, '\\\\$1')
+
   // Strip redundant \($...$\) → $...$  (LLM mixing delimiter styles)
   result = result.replace(/\\\(\s*\$([^$\n]+?)\$\s*\\\)/g, (_, inner) => `$${inner}$`)
 
@@ -83,6 +95,8 @@ function renderLatex(text: string): string {
 
   // 0a3: word → negative number: "by-2" → "by -2"
   result = result.replace(/([a-zA-Z])(-)(\d)/g, '$1 $2$3')
+  // 0a4: negative number → word: "-2gives" → "-2 gives"
+  result = result.replace(/(-\d+)([a-zA-Z])/g, '$1 $2')
 
   // 0b + 0c + 0d combined iterative loop (same logic as markdown-renderer)
   let prev = ''

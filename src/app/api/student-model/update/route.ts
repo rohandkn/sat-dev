@@ -56,11 +56,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch exam results
-    const { data: examQuestions } = await supabase
+    let examQuery = supabase
       .from('exam_questions')
       .select('*')
       .eq('session_id', sessionId)
       .eq('exam_type', examType)
+
+    if (examType === 'remediation') {
+      const { data: latestAttemptRow } = await supabase
+        .from('exam_questions')
+        .select('attempt_number')
+        .eq('session_id', sessionId)
+        .eq('exam_type', 'remediation')
+        .or('user_answer.not.is.null,is_idk.eq.true,is_correct.not.is.null')
+        .order('attempt_number', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (latestAttemptRow?.attempt_number) {
+        examQuery = examQuery.eq('attempt_number', latestAttemptRow.attempt_number)
+      }
+    }
+
+    const { data: examQuestions } = await examQuery
 
     if (!examQuestions || examQuestions.length === 0) {
       return NextResponse.json({ error: 'No exam results found' }, { status: 400 })

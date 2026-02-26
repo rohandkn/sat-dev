@@ -51,15 +51,35 @@ export default function ReviewPage() {
       // After the first post-exam failure (remediation_loop_count = 1) show
       // post-exam wrong questions.  After a remediation exam failure
       // (remediation_loop_count > 1) show the remediation exam's wrong questions.
-      const examType = (sessionData?.remediation_loop_count ?? 0) > 1 ? 'remediation' : 'post'
+      const loopCount = sessionData?.remediation_loop_count ?? 0
+      const examType = loopCount > 1 ? 'remediation' : 'post'
+      let remediationAttempt: number | null = null
 
-      const { data: questions } = await supabase
+      if (examType === 'remediation') {
+        const { data: latestAttemptRow } = await supabase
+          .from('exam_questions')
+          .select('attempt_number')
+          .eq('session_id', sessionId!)
+          .eq('exam_type', 'remediation')
+          .order('attempt_number', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        remediationAttempt = latestAttemptRow?.attempt_number ?? null
+      }
+
+      let questionsQuery = supabase
         .from('exam_questions')
         .select('*')
         .eq('session_id', sessionId!)
         .eq('exam_type', examType)
         .or('is_correct.eq.false,is_idk.eq.true')
-        .order('question_number')
+
+      if (examType === 'remediation' && remediationAttempt) {
+        questionsQuery = questionsQuery.eq('attempt_number', remediationAttempt)
+      }
+
+      const { data: questions } = await questionsQuery.order('question_number')
 
       if (questions && questions.length > 0) {
         setWrongQuestions(questions.map(q => ({
@@ -69,10 +89,16 @@ export default function ReviewPage() {
       }
 
       // Check existing threads
-      const { data: threads } = await supabase
+      let threadsQuery = supabase
         .from('remediation_threads')
-        .select('question_id, is_resolved')
+        .select('question_id, is_resolved, exam_questions!inner(attempt_number)')
         .eq('session_id', sessionId!)
+
+      if (examType === 'remediation' && remediationAttempt) {
+        threadsQuery = threadsQuery.eq('exam_questions.attempt_number', remediationAttempt)
+      }
+
+      const { data: threads } = await threadsQuery
 
       if (threads) {
         const resolved = new Set<string>()
@@ -137,6 +163,7 @@ export default function ReviewPage() {
     )
   }
 
+  const resolvedCount = wrongQuestions.filter(q => resolvedQuestions.has(q.id)).length
   const allResolved = wrongQuestions.every(q => resolvedQuestions.has(q.id))
   const currentQuestion = wrongQuestions[currentQuestionIndex]
 
@@ -196,7 +223,7 @@ export default function ReviewPage() {
 
       {/* Progress */}
       <div className="text-center text-sm text-muted-foreground">
-        {resolvedQuestions.size} of {wrongQuestions.length} questions resolved
+        {resolvedCount} of {wrongQuestions.length} questions resolved
       </div>
 
       {/* Current question remediation — keep chat visible even after resolved so

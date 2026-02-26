@@ -106,10 +106,14 @@ export function LessonViewer({ content, loading, streaming }: LessonViewerProps)
   // unmount/remount cycles that cause visible flickering. One clean render
   // happens when streaming completes and streaming flips to false.
   if (streaming) {
+    const sanitized = content
+      .replace(/\r/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+
     return (
       <div className="pb-8">
         <div className="prose dark:prose-invert max-w-none whitespace-pre-wrap text-[0.9375rem] leading-7">
-          {content}
+          {sanitized}
         </div>
         <span className="inline-block w-2 h-4 bg-primary/70 animate-pulse ml-0.5 align-middle rounded-sm" />
       </div>
