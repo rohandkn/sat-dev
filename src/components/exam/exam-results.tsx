@@ -104,7 +104,7 @@ export function ExamResults({
                       // "[expr1] [expr2]" → two lines
                       .replace(/\]\s*\[/g, ']\n[')
                       // Split consecutive $expr$ $expr$ where both contain comparison operators
-                      .replace(/\$([^$\n]*(?:[=<>]|\\leq|\\geq|\\neq)[^$\n]*)\$\s+\$([^$\n]*(?:[=<>]|\\leq|\\geq|\\neq)[^$\n]*)\$/g, '$$$1$$\n$$$2$$')
+                      .replace(/\$([^$\n]*(?:[=<>]|\\leq|\\geq|\\neq)[^$\n]*)\$\s+\$([^$\n]*(?:[=<>]|\\leq|\\geq|\\neq)[^$\n]*)\$/g, (_, a, b) => `$${a}$\n$${b}$`)
                       .split('\n')
                       .filter(line => line.trim())
                       .map((line, idx) => (

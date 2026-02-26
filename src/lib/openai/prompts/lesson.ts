@@ -47,8 +47,8 @@ QUESTIONS YOU GOT WRONG (you MUST address each one):
 ${wrongQuestions.map((q, i) => `
 Question ${i + 1}: ${q.question_text}
 Choices: ${Object.entries(q.choices).map(([k, v]) => `${k}) ${v}`).join(', ')}
-Correct Answer: ${q.correct_answer}
-Your Answer: ${q.is_idk ? 'Said "I don\'t know"' : q.user_answer}
+Correct Answer: ${q.correct_answer}) ${q.choices[q.correct_answer] ?? ''}
+Your Answer: ${q.is_idk ? 'Said "I don\'t know"' : `${q.user_answer}) ${q.choices[q.user_answer ?? ''] ?? ''}`}
 Explanation: ${q.explanation}
 `).join('\n')}`
     : ''

@@ -23,7 +23,9 @@ function preprocessKatex(text: string): string {
 
   // Convert literal "\n" sequences to real newlines, but avoid LaTeX commands
   // like "\neq" that also start with "\n".
-  result = result.replace(/\\n(?!eq\b|eg\b|u\b|abla|ot\b|otin|i\b|leq|geq|mid)/g, '\n')
+  // Use (?![a-zA-Z]) instead of \b — word boundaries treat digits as word
+  // characters, so \neq3 (no space) would fail \b and get corrupted.
+  result = result.replace(/\\n(?!eq(?![a-zA-Z])|eg(?![a-zA-Z])|u(?![a-zA-Z])|abla|ot(?![a-zA-Z])|otin|i(?![a-zA-Z])|leq|geq|mid)/g, '\n')
 
   // Normalize Unicode minus (−) to ASCII hyphen for consistent spacing fixes.
   result = result.replace(/\u2212/g, '-')
@@ -53,7 +55,7 @@ function preprocessKatex(text: string): string {
   // "\[expr1\] \[expr2\]" → "\[expr1\]\n\[expr2\]"
   // "$$expr1$$ $$expr2$$" → "$$expr1$$\n$$expr2$$"
   result = result.replace(/\\\]\s*\\\[/g, '\\]\n\\[')
-  result = result.replace(/\$\$([^$]+)\$\$\s*\$\$/g, '$$$1$$\n$$')
+  result = result.replace(/\$\$([^$]+)\$\$\s*\$\$/g, (_, c) => `$$${c}$$\n$$`)
 
   // Split consecutive inline $..$ blocks that look like equation/inequality
   // steps onto separate lines. Matches expressions containing =, <, >,

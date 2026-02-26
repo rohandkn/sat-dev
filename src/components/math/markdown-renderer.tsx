@@ -130,7 +130,7 @@ function preprocessMarkdownMath(text: string): string {
   }).join('\n')
 
   // 0c: Split consecutive display math blocks onto separate lines.
-  result = result.replace(/\$\$([^$]+)\$\$\s*\$\$/g, '$$$1$$\n$$')
+  result = result.replace(/\$\$([^$]+)\$\$\s*\$\$/g, (_, c) => `$$${c}$$\n$$`)
   // 0c2: If two display blocks are adjacent, insert a blank line between them
   //      so list items render each step on its own line.
   {
@@ -145,15 +145,37 @@ function preprocessMarkdownMath(text: string): string {
   }
   // 0c3: Ensure display math blocks are isolated by blank lines so Markdown
   //      renders them as separate blocks (prevents line-collapsing).
+  //      IMPORTANT: Do NOT insert blank lines INSIDE fenced display math
+  //      (between $$ and its content), or remark-math won't parse it.
   {
     const lines = result.split('\n')
     const withSpacing: string[] = []
+    let insideDisplayFence = false
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i]
+      const isDelimiter = line.trim() === '$$'
       const hasDisplay = line.includes('$$')
       const indentMatch = line.match(/^\s*/)
       const indent = indentMatch ? indentMatch[0] : ''
-      if (hasDisplay) {
+
+      if (isDelimiter) {
+        if (!insideDisplayFence) {
+          // Opening $$: blank line before (separate from prose) but NOT after
+          if (withSpacing.length > 0 && withSpacing[withSpacing.length - 1].trim() !== '') {
+            withSpacing.push(indent)
+          }
+          withSpacing.push(line)
+          insideDisplayFence = true
+        } else {
+          // Closing $$: NOT before (keep content attached), blank line after
+          withSpacing.push(line)
+          if (i + 1 < lines.length && lines[i + 1].trim() !== '') {
+            withSpacing.push(indent)
+          }
+          insideDisplayFence = false
+        }
+      } else if (hasDisplay) {
+        // Single-line display math (e.g. $$expr$$ that 0b6 didn't expand)
         if (withSpacing.length > 0 && withSpacing[withSpacing.length - 1].trim() !== '') {
           withSpacing.push(indent)
         }
@@ -436,7 +458,16 @@ function preprocessMarkdownMath(text: string): string {
     (_, label, value) => `${label}) $${value}$`
   )
 
-  // ── Step 10 ────────────────────────────────────────────────────────
+  // ── Step 10b ───────────────────────────────────────────────────────
+  // Ensure a space after multiple-choice labels when followed by a
+  // non-space character: "C)40" → "C) 40", "C)$40$" → "C) $40$".
+  result = replaceOutsideMath(
+    result,
+    /\b([A-E])\)(?=\S)/g,
+    (_, label) => `${label}) `
+  )
+
+  // ── Step 10c ───────────────────────────────────────────────────────
   // Safety net: on any line with an odd number of $ (unbalanced),
   // close an unclosed expression or remove a stray $.
   result = result.split('\n').map(line => {

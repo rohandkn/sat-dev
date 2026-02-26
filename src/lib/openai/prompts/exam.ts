@@ -113,28 +113,38 @@ GRAPHING INEQUALITIES — NOT-EQUALS RULE (critical):
 - Do NOT include graphing choices that all shade only one side for $\\neq$.`
 }
 
+// Strip $...$ and $$...$$ math delimiters from a string so the validator
+// sees plain values.  This prevents ambiguity between LaTeX $33$ and
+// the currency symbol $33 in questions about money/cost.
+function stripMathDelimiters(text: string): string {
+  return text.replace(/\$\$/g, '').replace(/\$/g, '')
+}
+
 export function buildExamValidationPrompt(
   questions: Array<{
     question_text: string
     choices: Record<string, string>
   }>
 ): string {
-  return `You are a strict SAT Math validator. For each question, solve it and determine which answer choices (A-D) are correct.
+  return `You are a strict SAT Math validator. For each question, solve it step by step and determine which answer choices (A-D) are correct.
 
 Rules:
 - Only use the question text and choices (ignore any provided correct_answer).
+- You MUST show your step-by-step work in the "reasoning" field before choosing your answer.
+- Compute the exact numerical answer yourself — do not approximate or guess.
+- "At least" means ≥ (greater than or equal to), "at most" means ≤ (less than or equal to). An answer that exactly equals the target DOES satisfy "at least" or "at most".
 - If more than one choice is correct, include all correct letters.
 - If no choices are correct, return an empty array for that question.
 - You MUST return a result for EVERY question. The results array must have exactly ${questions.length} items, with indices 1..${questions.length} in order.
-- For graphing questions that ONLY involve a single $\\neq$ inequality (e.g. $y \\neq c$ or $x \\neq c$ with no other inequalities), the ONLY correct graph shows a dashed boundary and shading on BOTH sides. One-sided shading is incorrect.
-- For systems of inequalities involving $\\neq$, a point is a solution only if it satisfies all strict inequalities and is NOT on any $\\neq$ boundary line. If the point lies exactly on the excluded line, it is NOT a solution.
-- For questions of the form "$ax + b \\neq c$" that ask for NOT a possible value, the correct choice is the value that makes $ax + b = c$ (the excluded value). All other values are possible.
+- For graphing questions that ONLY involve a single \\neq inequality (e.g. y \\neq c or x \\neq c with no other inequalities), the ONLY correct graph shows a dashed boundary and shading on BOTH sides. One-sided shading is incorrect.
+- For systems of inequalities involving \\neq, a point is a solution only if it satisfies all strict inequalities and is NOT on any \\neq boundary line. If the point lies exactly on the excluded line, it is NOT a solution.
+- For questions of the form "ax + b \\neq c" that ask for NOT a possible value, the correct choice is the value that makes ax + b = c (the excluded value). All other values are possible.
 
 Return JSON matching the provided schema.
 
 QUESTIONS:
 ${questions.map((q, i) => {
-  const choices = Object.entries(q.choices).map(([k, v]) => `${k}) ${v}`).join('\n')
+  const choices = Object.entries(q.choices).map(([k, v]) => `${k}) ${stripMathDelimiters(v)}`).join('\n')
   return `${i + 1}. ${q.question_text}\n${choices}`
 }).join('\n\n')}`
 }

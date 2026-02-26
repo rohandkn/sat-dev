@@ -29,8 +29,6 @@ export default function ReviewPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [resolvedQuestions, setResolvedQuestions] = useState<Set<string>>(new Set())
   const [loadingQuestions, setLoadingQuestions] = useState(true)
-  const [session, setSession] = useState<{ state: string; remediation_loop_count: number } | null>(null)
-
   const remediation = useRemediation()
 
   const topicSlug = pathname.split('/topics/')[1]?.split('/')[0]
@@ -40,46 +38,28 @@ export default function ReviewPage() {
     if (!sessionId) return
 
     async function load() {
-      const { data: sessionData } = await supabase
-        .from('learning_sessions')
-        .select('state, remediation_loop_count')
-        .eq('id', sessionId!)
-        .single()
+      // Show wrong questions from the MOST RECENT exam only — not accumulated
+      // across prior loops.  Find the latest exam by created_at and filter by
+      // its exam_type + attempt_number.
+      const { data: latestExamRow } = await supabase
+        .from('exam_questions')
+        .select('exam_type, attempt_number')
+        .eq('session_id', sessionId!)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-      setSession(sessionData)
+      const examType = latestExamRow?.exam_type ?? 'post'
+      const attemptNumber = latestExamRow?.attempt_number ?? 1
 
-      // After the first post-exam failure (remediation_loop_count = 1) show
-      // post-exam wrong questions.  After a remediation exam failure
-      // (remediation_loop_count > 1) show the remediation exam's wrong questions.
-      const loopCount = sessionData?.remediation_loop_count ?? 0
-      const examType = loopCount > 1 ? 'remediation' : 'post'
-      let remediationAttempt: number | null = null
-
-      if (examType === 'remediation') {
-        const { data: latestAttemptRow } = await supabase
-          .from('exam_questions')
-          .select('attempt_number')
-          .eq('session_id', sessionId!)
-          .eq('exam_type', 'remediation')
-          .order('attempt_number', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        remediationAttempt = latestAttemptRow?.attempt_number ?? null
-      }
-
-      let questionsQuery = supabase
+      const { data: questions } = await supabase
         .from('exam_questions')
         .select('*')
         .eq('session_id', sessionId!)
         .eq('exam_type', examType)
+        .eq('attempt_number', attemptNumber)
         .or('is_correct.eq.false,is_idk.eq.true')
-
-      if (examType === 'remediation' && remediationAttempt) {
-        questionsQuery = questionsQuery.eq('attempt_number', remediationAttempt)
-      }
-
-      const { data: questions } = await questionsQuery.order('question_number')
+        .order('question_number')
 
       if (questions && questions.length > 0) {
         setWrongQuestions(questions.map(q => ({
@@ -88,21 +68,24 @@ export default function ReviewPage() {
         })))
       }
 
-      // Check existing threads
-      let threadsQuery = supabase
+      // Check existing threads — only for the current exam's questions.
+      // Order by created_at DESC so the LATEST thread per question wins
+      // (guards against stale resolved threads if deletion failed).
+      const { data: threads } = await supabase
         .from('remediation_threads')
-        .select('question_id, is_resolved, exam_questions!inner(attempt_number)')
+        .select('question_id, is_resolved, created_at, exam_questions!inner(attempt_number, exam_type)')
         .eq('session_id', sessionId!)
-
-      if (examType === 'remediation' && remediationAttempt) {
-        threadsQuery = threadsQuery.eq('exam_questions.attempt_number', remediationAttempt)
-      }
-
-      const { data: threads } = await threadsQuery
+        .eq('exam_questions.exam_type', examType)
+        .eq('exam_questions.attempt_number', attemptNumber)
+        .order('created_at', { ascending: false })
 
       if (threads) {
         const resolved = new Set<string>()
+        const seen = new Set<string>()
         threads.forEach(t => {
+          // Only consider the newest thread per question
+          if (seen.has(t.question_id)) return
+          seen.add(t.question_id)
           if (t.is_resolved) resolved.add(t.question_id)
         })
         setResolvedQuestions(resolved)

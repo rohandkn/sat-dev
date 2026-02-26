@@ -24,6 +24,7 @@ export type ExamGeneration = z.infer<typeof examGenerationSchema>
 export const examValidationSchema = z.object({
   results: z.array(z.object({
     index: z.number().int().min(1),
+    reasoning: z.string(),
     correct_choices: z.array(z.enum(['A', 'B', 'C', 'D'])),
   })),
 })
@@ -103,12 +104,13 @@ export const examValidationJsonSchema = {
         type: 'object' as const,
         properties: {
           index: { type: 'number' as const },
+          reasoning: { type: 'string' as const },
           correct_choices: {
             type: 'array' as const,
             items: { type: 'string' as const, enum: ['A', 'B', 'C', 'D'] },
           },
         },
-        required: ['index', 'correct_choices'],
+        required: ['index', 'reasoning', 'correct_choices'],
         additionalProperties: false,
       },
     },
