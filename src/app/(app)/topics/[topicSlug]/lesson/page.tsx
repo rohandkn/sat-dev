@@ -6,6 +6,7 @@ import { useLesson } from '@/hooks/use-lesson'
 import { LessonViewer } from '@/components/lesson/lesson-viewer'
 import { Button } from '@/components/ui/button'
 import { usePathname } from 'next/navigation'
+import { VideoSection } from '@/components/lesson/video-section'
 
 export default function LessonPage() {
   const router = useRouter()
@@ -56,6 +57,10 @@ export default function LessonPage() {
       <div className="min-h-[400px]">
         <LessonViewer content={content} loading={loading} streaming={streaming} />
       </div>
+
+      {complete && topicSlug && (
+        <VideoSection topicName={topicSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} />
+      )}
 
       {complete && (
         <div className="text-center space-y-4 border-t pt-6">

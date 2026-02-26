@@ -37,23 +37,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Question not found' }, { status: 404 })
     }
 
-    // Check if thread already exists
+    if (question.exam_type === 'remediation') {
+      const { data: latestAttemptRow } = await supabase
+        .from('exam_questions')
+        .select('attempt_number')
+        .eq('session_id', sessionId)
+        .eq('exam_type', 'remediation')
+        .order('attempt_number', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const latestAttempt = latestAttemptRow?.attempt_number ?? null
+      if (latestAttempt && question.attempt_number !== latestAttempt) {
+        return NextResponse.json({ error: 'Stale remediation question' }, { status: 400 })
+      }
+    }
+
+    // Always start a fresh thread for this question to avoid leaking prior
+    // remediation history across attempts.
     const { data: existingThread } = await supabase
       .from('remediation_threads')
-      .select('*')
+      .select('id')
       .eq('question_id', questionId)
       .eq('user_id', user.id)
       .single()
 
     if (existingThread) {
-      // Return existing thread with messages
-      const { data: messages } = await supabase
+      await supabase
         .from('remediation_messages')
-        .select('*')
+        .delete()
         .eq('thread_id', existingThread.id)
-        .order('created_at')
 
-      return NextResponse.json({ thread: existingThread, messages: messages ?? [] })
+      await supabase
+        .from('remediation_threads')
+        .delete()
+        .eq('id', existingThread.id)
     }
 
     // Fetch student model

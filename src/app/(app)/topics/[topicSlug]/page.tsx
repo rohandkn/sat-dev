@@ -53,7 +53,6 @@ export default async function TopicPage({ params }: TopicPageProps) {
       progress={progress}
       activeSession={activeSession}
       studentModel={studentModel}
-      userId={user.id}
     />
   )
 }

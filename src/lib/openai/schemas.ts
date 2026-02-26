@@ -20,6 +20,17 @@ export const examGenerationSchema = z.object({
 export type ExamQuestion = z.infer<typeof examQuestionSchema>
 export type ExamGeneration = z.infer<typeof examGenerationSchema>
 
+// Exam validation schema for structured output
+export const examValidationSchema = z.object({
+  results: z.array(z.object({
+    index: z.number().int().min(1),
+    reasoning: z.string(),
+    correct_choices: z.array(z.enum(['A', 'B', 'C', 'D'])),
+  })),
+})
+
+export type ExamValidation = z.infer<typeof examValidationSchema>
+
 // Student model update schema
 export const studentModelUpdateSchema = z.object({
   strengths: z.array(z.string()),
@@ -59,6 +70,9 @@ export const examGenerationJsonSchema = {
         type: 'object' as const,
         properties: {
           question_text: { type: 'string' as const },
+          // explanation is generated BEFORE correct_answer so the model solves
+          // the math first and picks the letter that matches its work — not the reverse.
+          explanation: { type: 'string' as const },
           choices: {
             type: 'object' as const,
             properties: {
@@ -71,14 +85,37 @@ export const examGenerationJsonSchema = {
             additionalProperties: false,
           },
           correct_answer: { type: 'string' as const, enum: ['A', 'B', 'C', 'D'] },
-          explanation: { type: 'string' as const },
         },
-        required: ['question_text', 'choices', 'correct_answer', 'explanation'],
+        required: ['question_text', 'explanation', 'choices', 'correct_answer'],
         additionalProperties: false,
       },
     },
   },
   required: ['questions'],
+  additionalProperties: false,
+}
+
+export const examValidationJsonSchema = {
+  type: 'object' as const,
+  properties: {
+    results: {
+      type: 'array' as const,
+      items: {
+        type: 'object' as const,
+        properties: {
+          index: { type: 'number' as const },
+          reasoning: { type: 'string' as const },
+          correct_choices: {
+            type: 'array' as const,
+            items: { type: 'string' as const, enum: ['A', 'B', 'C', 'D'] },
+          },
+        },
+        required: ['index', 'reasoning', 'correct_choices'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['results'],
   additionalProperties: false,
 }
 

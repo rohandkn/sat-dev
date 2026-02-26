@@ -22,13 +22,17 @@ export async function initializeUserProgress(
 
   const existingSet = new Set((existing ?? []).map(e => e.topic_id))
 
-  // Create progress entries for topics that don't have them
+  // Create progress entries for topics that don't have them.
+  // Only the very first topic (display_order = 1) starts as 'available' when the user
+  // has no progress at all. All other new entries start 'locked' so that unlockNextTopic
+  // controls progression correctly.
+  const noExistingProgress = existingSet.size === 0
   const newEntries = topics
     .filter(t => !existingSet.has(t.id))
-    .map((t, index) => ({
+    .map(t => ({
       user_id: userId,
       topic_id: t.id,
-      status: (index === 0 ? 'available' : 'locked') as 'available' | 'locked',
+      status: (noExistingProgress && t.display_order === 1 ? 'available' : 'locked') as 'available' | 'locked',
     }))
 
   if (newEntries.length > 0) {
@@ -60,49 +64,3 @@ export async function unlockNextTopic(
   }
 }
 
-export async function updateTopicProgress(
-  supabase: SupabaseClient,
-  userId: string,
-  topicId: string,
-  status: 'in_progress' | 'completed',
-  score?: number
-) {
-  const { data: existing } = await supabase
-    .from('user_topic_progress')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('topic_id', topicId)
-    .single()
-
-  if (existing) {
-    const updates: Record<string, unknown> = {
-      status,
-      updated_at: new Date().toISOString(),
-    }
-
-    if (status === 'in_progress') {
-      updates.attempts = existing.attempts + 1
-    }
-
-    if (score !== undefined) {
-      updates.best_score = existing.best_score
-        ? Math.max(existing.best_score, score)
-        : score
-    }
-
-    await supabase
-      .from('user_topic_progress')
-      .update(updates)
-      .eq('id', existing.id)
-  } else {
-    await supabase
-      .from('user_topic_progress')
-      .insert({
-        user_id: userId,
-        topic_id: topicId,
-        status,
-        best_score: score ?? null,
-        attempts: 1,
-      })
-  }
-}

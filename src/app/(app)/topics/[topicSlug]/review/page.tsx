@@ -5,10 +5,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { RemediationChat } from '@/components/remediation/remediation-chat'
 import { useRemediation } from '@/hooks/use-remediation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { KatexRenderer } from '@/components/math/katex-renderer'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface WrongQuestion {
@@ -32,8 +29,6 @@ export default function ReviewPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [resolvedQuestions, setResolvedQuestions] = useState<Set<string>>(new Set())
   const [loadingQuestions, setLoadingQuestions] = useState(true)
-  const [session, setSession] = useState<{ state: string; remediation_loop_count: number } | null>(null)
-
   const remediation = useRemediation()
 
   const topicSlug = pathname.split('/topics/')[1]?.split('/')[0]
@@ -43,20 +38,26 @@ export default function ReviewPage() {
     if (!sessionId) return
 
     async function load() {
-      const { data: sessionData } = await supabase
-        .from('learning_sessions')
-        .select('state, remediation_loop_count')
-        .eq('id', sessionId!)
-        .single()
+      // Show wrong questions from the MOST RECENT exam only — not accumulated
+      // across prior loops.  Find the latest exam by created_at and filter by
+      // its exam_type + attempt_number.
+      const { data: latestExamRow } = await supabase
+        .from('exam_questions')
+        .select('exam_type, attempt_number')
+        .eq('session_id', sessionId!)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-      setSession(sessionData)
+      const examType = latestExamRow?.exam_type ?? 'post'
+      const attemptNumber = latestExamRow?.attempt_number ?? 1
 
-      // Get wrong questions from the most recent post exam
       const { data: questions } = await supabase
         .from('exam_questions')
         .select('*')
         .eq('session_id', sessionId!)
-        .eq('exam_type', 'post')
+        .eq('exam_type', examType)
+        .eq('attempt_number', attemptNumber)
         .or('is_correct.eq.false,is_idk.eq.true')
         .order('question_number')
 
@@ -67,15 +68,24 @@ export default function ReviewPage() {
         })))
       }
 
-      // Check existing threads
+      // Check existing threads — only for the current exam's questions.
+      // Order by created_at DESC so the LATEST thread per question wins
+      // (guards against stale resolved threads if deletion failed).
       const { data: threads } = await supabase
         .from('remediation_threads')
-        .select('question_id, is_resolved')
+        .select('question_id, is_resolved, created_at, exam_questions!inner(attempt_number, exam_type)')
         .eq('session_id', sessionId!)
+        .eq('exam_questions.exam_type', examType)
+        .eq('exam_questions.attempt_number', attemptNumber)
+        .order('created_at', { ascending: false })
 
       if (threads) {
         const resolved = new Set<string>()
+        const seen = new Set<string>()
         threads.forEach(t => {
+          // Only consider the newest thread per question
+          if (seen.has(t.question_id)) return
+          seen.add(t.question_id)
           if (t.is_resolved) resolved.add(t.question_id)
         })
         setResolvedQuestions(resolved)
@@ -136,6 +146,7 @@ export default function ReviewPage() {
     )
   }
 
+  const resolvedCount = wrongQuestions.filter(q => resolvedQuestions.has(q.id)).length
   const allResolved = wrongQuestions.every(q => resolvedQuestions.has(q.id))
   const currentQuestion = wrongQuestions[currentQuestionIndex]
 
@@ -177,6 +188,7 @@ export default function ReviewPage() {
       <div className="flex items-center justify-center gap-2">
         {wrongQuestions.map((q, i) => (
           <button
+            type="button"
             key={q.id}
             onClick={() => {
               remediation.reset()
@@ -194,12 +206,13 @@ export default function ReviewPage() {
 
       {/* Progress */}
       <div className="text-center text-sm text-muted-foreground">
-        {resolvedQuestions.size} of {wrongQuestions.length} questions resolved
+        {resolvedCount} of {wrongQuestions.length} questions resolved
       </div>
 
-      {/* Current question remediation */}
-      {currentQuestion && !resolvedQuestions.has(currentQuestion.id) && (
-        <div className="h-[500px]">
+      {/* Current question remediation — keep chat visible even after resolved so
+          the student can read the final response before navigating away */}
+      {currentQuestion && (
+        <div className="h-[min(500px,calc(100vh-22rem))]">
           <RemediationChat
             questionText={currentQuestion.question_text}
             questionChoices={currentQuestion.choices}
@@ -209,25 +222,11 @@ export default function ReviewPage() {
             messages={remediation.messages}
             loading={remediation.loading}
             streaming={remediation.streaming}
-            isResolved={remediation.isResolved}
+            isResolved={remediation.isResolved || resolvedQuestions.has(currentQuestion.id)}
             error={remediation.error}
             onSendMessage={remediation.sendMessage}
           />
         </div>
-      )}
-
-      {currentQuestion && resolvedQuestions.has(currentQuestion.id) && (
-        <Card className="border-green-200">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Question {currentQuestionIndex + 1}</CardTitle>
-              <Badge variant="default" className="bg-green-600">Resolved</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <KatexRenderer content={currentQuestion.question_text} />
-          </CardContent>
-        </Card>
       )}
 
       {/* Navigation */}

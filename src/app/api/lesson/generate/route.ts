@@ -38,17 +38,42 @@ export async function POST(request: NextRequest) {
       return new Response(JSON.stringify({ error: 'Session not found' }), { status: 404 })
     }
 
-    // Validate state transition
     const pendingState = lessonType === 'initial' ? 'lesson_pending' : 'remediation_lesson_pending'
     const activeState = lessonType === 'initial' ? 'lesson_active' : 'remediation_lesson_active'
+    const completedState = lessonType === 'initial' ? 'lesson_completed' : 'remediation_lesson_completed'
 
-    if (!canTransition(session.state, activeState) && session.state !== pendingState) {
-      // Allow generating from completed pre-exam state
-      if (!(session.state === 'pre_exam_completed' && lessonType === 'initial')) {
-        return new Response(JSON.stringify({
-          error: `Cannot generate ${lessonType} lesson from state ${session.state}`,
-        }), { status: 400 })
+    // Handle page reload: session is already active or completed from a previous visit.
+    // Return saved content if available; fall through to regenerate if stream was interrupted.
+    if (session.state === activeState || session.state === completedState) {
+      const { data: existingLesson } = await supabase
+        .from('lessons')
+        .select('content')
+        .eq('session_id', sessionId)
+        .eq('lesson_type', lessonType)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (existingLesson?.content) {
+        return new Response(existingLesson.content, {
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        })
       }
+      // Content missing (stream was interrupted) — fall through to regenerate
+    }
+
+    // State guard: reject truly invalid states
+    const canStart =
+      session.state === pendingState ||
+      session.state === activeState ||
+      canTransition(session.state, activeState) ||
+      (session.state === 'pre_exam_completed' && lessonType === 'initial') ||
+      (session.state === 'remediation_active' && lessonType === 'remediation')
+
+    if (!canStart) {
+      return new Response(JSON.stringify({
+        error: `Cannot generate ${lessonType} lesson from state ${session.state}`,
+      }), { status: 400 })
     }
 
     const topic = session.topics as { name: string; description: string | null }
@@ -62,13 +87,49 @@ export async function POST(request: NextRequest) {
       .single()
 
     // Fetch wrong questions from the relevant exam
-    const examType = lessonType === 'initial' ? 'pre' : 'post'
-    const { data: wrongQuestions } = await supabase
-      .from('exam_questions')
-      .select('*')
-      .eq('session_id', sessionId)
-      .eq('exam_type', examType)
-      .or('is_correct.eq.false,is_idk.eq.true')
+    const examType = lessonType === 'initial'
+      ? 'pre'
+      : (session.remediation_loop_count ?? 0) > 1
+        ? 'remediation'
+        : 'post'
+
+    let wrongQuestions: Array<Record<string, unknown>> | null = null
+
+    if (lessonType === 'remediation') {
+      const { data: latestAttemptRow } = await supabase
+        .from('exam_questions')
+        .select('attempt_number')
+        .eq('session_id', sessionId)
+        .eq('exam_type', 'remediation')
+        .or('user_answer.not.is.null,is_idk.eq.true,is_correct.not.is.null')
+        .order('attempt_number', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const latestAttempt = latestAttemptRow?.attempt_number ?? null
+      if (latestAttempt) {
+        const { data: latestWrong } = await supabase
+          .from('exam_questions')
+          .select('*')
+          .eq('session_id', sessionId)
+          .eq('exam_type', 'remediation')
+          .eq('attempt_number', latestAttempt)
+          .or('is_correct.eq.false,is_idk.eq.true')
+
+        wrongQuestions = latestWrong ?? null
+      }
+    }
+
+    if (!wrongQuestions) {
+      const { data: fallbackWrong } = await supabase
+        .from('exam_questions')
+        .select('*')
+        .eq('session_id', sessionId)
+        .eq('exam_type', examType)
+        .or('is_correct.eq.false,is_idk.eq.true')
+
+      wrongQuestions = fallbackWrong ?? null
+    }
 
     // For remediation lessons, also gather remediation thread insights
     let remediationInsights = ''

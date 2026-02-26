@@ -21,3 +21,13 @@ export function getWrongQuestions<T extends { is_correct: boolean | null; is_idk
 ): T[] {
   return questions.filter(q => q.is_correct === false || q.is_idk)
 }
+
+/** Pure grading function — determines correctness for a single answer. */
+export function gradeAnswer(params: {
+  answer: string | null
+  isIdk: boolean
+  correctAnswer: string
+}): boolean {
+  const { answer, isIdk, correctAnswer } = params
+  return !isIdk && answer !== null && answer === correctAnswer
+}

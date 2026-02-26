@@ -1,6 +1,21 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { unstable_cache } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { TopicGrid } from '@/components/dashboard/topic-grid'
+
+// Categories + topics are seed data with no user-scoped RLS — cache globally for 1 hour
+const getCategoriesWithTopics = unstable_cache(
+  async () => {
+    const supabase = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+    return supabase.from('categories').select('*, topics(*)').order('display_order')
+  },
+  ['dashboard-categories'],
+  { tags: ['categories'], revalidate: 3600 }
+)
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -8,11 +23,8 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // Fetch categories with topics
-  const { data: categories } = await supabase
-    .from('categories')
-    .select('*, topics(*)')
-    .order('display_order')
+  // Categories/topics are seed data — served from cache
+  const { data: categories, error: categoriesError } = await getCategoriesWithTopics()
 
   // Fetch user progress
   const { data: progress } = await supabase
@@ -33,6 +45,18 @@ export default async function DashboardPage() {
           Track your progress and master SAT Math topics
         </p>
       </div>
+
+      {categoriesError && (
+        <p className="text-destructive text-sm">
+          Failed to load topics: {categoriesError.message}
+        </p>
+      )}
+
+      {!categoriesError && (categories ?? []).length === 0 && (
+        <p className="text-muted-foreground text-sm">
+          No topics found. The database may not be seeded yet.
+        </p>
+      )}
 
       {(categories ?? []).map((category) => (
         <section key={category.id} className="space-y-4">

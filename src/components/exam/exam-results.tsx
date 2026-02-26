@@ -95,8 +95,23 @@ export function ExamResults({
                   <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                     Show explanation
                   </summary>
-                  <div className="mt-2 bg-muted p-3 rounded-md">
-                    <KatexRenderer content={q.explanation} />
+                  <div className="mt-2 bg-muted p-3 rounded-md space-y-1.5">
+                    {q.explanation
+                      // Handle literal "\n" strings the LLM outputs in JSON structured
+                      // output, but NOT when \n is part of a LaTeX command like \neq or \neg.
+                      .replace(/\\n(?!eq\b|eg\b|u\b|abla|ot\b|otin|i\b|leq|geq|mid)/g, '\n')
+                      // Split consecutive equation blocks onto separate lines
+                      // "[expr1] [expr2]" → two lines
+                      .replace(/\]\s*\[/g, ']\n[')
+                      // Split consecutive $expr$ $expr$ where both contain comparison operators
+                      .replace(/\$([^$\n]*(?:[=<>]|\\leq|\\geq|\\neq)[^$\n]*)\$\s+\$([^$\n]*(?:[=<>]|\\leq|\\geq|\\neq)[^$\n]*)\$/g, (_, a, b) => `$${a}$\n$${b}$`)
+                      .split('\n')
+                      .filter(line => line.trim())
+                      .map((line, idx) => (
+                        <div key={idx} className="pl-2">
+                          <KatexRenderer content={line} />
+                        </div>
+                      ))}
                   </div>
                 </details>
               </CardContent>

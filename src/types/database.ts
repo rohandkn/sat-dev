@@ -172,6 +172,7 @@ export interface Database {
           session_id: string
           user_id: string
           exam_type: 'pre' | 'post' | 'remediation'
+          attempt_number: number
           question_number: number
           question_text: string
           choices: Json
@@ -187,6 +188,7 @@ export interface Database {
           session_id: string
           user_id: string
           exam_type: 'pre' | 'post' | 'remediation'
+          attempt_number?: number
           question_number: number
           question_text: string
           choices: Json
@@ -202,6 +204,7 @@ export interface Database {
           session_id?: string
           user_id?: string
           exam_type?: 'pre' | 'post' | 'remediation'
+          attempt_number?: number
           question_number?: number
           question_text?: string
           choices?: Json

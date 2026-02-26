@@ -21,6 +21,7 @@ interface ExamResult {
   questionId: string
   isCorrect: boolean
   isIdk: boolean
+  userAnswer: string | null
   correctAnswer: string
   explanation: string
 }
@@ -132,6 +133,7 @@ export function useExam() {
 
   return {
     questions,
+    answers,
     currentQuestion,
     currentIndex,
     currentAnswer,

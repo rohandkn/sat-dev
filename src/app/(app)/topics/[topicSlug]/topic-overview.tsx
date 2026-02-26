@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -33,7 +32,6 @@ interface TopicOverviewProps {
     weaknesses: string[]
     mastery_level: number
   } | null
-  userId: string
 }
 
 export function TopicOverview({
@@ -41,75 +39,30 @@ export function TopicOverview({
   progress,
   activeSession,
   studentModel,
-  userId,
 }: TopicOverviewProps) {
   const router = useRouter()
   const [creating, setCreating] = useState(false)
-  const supabase = createClient()
+  const [error, setError] = useState<string | null>(null)
 
   async function startNewSession() {
     setCreating(true)
+    setError(null)
 
-    // Count existing sessions for this topic
-    const { count } = await supabase
-      .from('learning_sessions')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('topic_id', topic.id)
+    const res = await fetch('/api/session/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicId: topic.id, topicSlug: topic.slug }),
+    })
 
-    const { data: session, error } = await supabase
-      .from('learning_sessions')
-      .insert({
-        user_id: userId,
-        topic_id: topic.id,
-        state: 'pre_exam_pending',
-        session_number: (count ?? 0) + 1,
-      })
-      .select()
-      .single()
-
-    if (error || !session) {
+    if (!res.ok) {
+      const data = await res.json()
+      setError(data.error ?? 'Failed to start session')
       setCreating(false)
       return
     }
 
-    // Ensure student model exists
-    const { data: existingModel } = await supabase
-      .from('student_models')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('topic_id', topic.id)
-      .single()
-
-    if (!existingModel) {
-      await supabase.from('student_models').insert({
-        user_id: userId,
-        topic_id: topic.id,
-      })
-    }
-
-    // Update topic progress to in_progress
-    const { data: existingProgress } = await supabase
-      .from('user_topic_progress')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('topic_id', topic.id)
-      .single()
-
-    if (existingProgress) {
-      await supabase
-        .from('user_topic_progress')
-        .update({ status: 'in_progress', updated_at: new Date().toISOString() })
-        .eq('id', existingProgress.id)
-    } else {
-      await supabase.from('user_topic_progress').insert({
-        user_id: userId,
-        topic_id: topic.id,
-        status: 'in_progress',
-      })
-    }
-
-    router.push(`/topics/${topic.slug}/pre-exam?session=${session.id}`)
+    const { sessionId } = await res.json()
+    router.push(`/topics/${topic.slug}/pre-exam?session=${sessionId}`)
   }
 
   function resumeSession() {
@@ -122,8 +75,15 @@ export function TopicOverview({
       router.push(`/topics/${topic.slug}/lesson?session=${activeSession.id}`)
     } else if (state.startsWith('post_exam')) {
       router.push(`/topics/${topic.slug}/post-exam?session=${activeSession.id}`)
-    } else if (state.includes('remediation')) {
+    } else if (state === 'remediation_active') {
+      // Only the remediation_active state maps to the review/chat page
       router.push(`/topics/${topic.slug}/review?session=${activeSession.id}`)
+    } else if (state.startsWith('remediation_lesson')) {
+      // Remediation lesson states go to the lesson page
+      router.push(`/topics/${topic.slug}/lesson?session=${activeSession.id}&type=remediation`)
+    } else if (state.startsWith('remediation_exam')) {
+      // Remediation exam states go to the post-exam page
+      router.push(`/topics/${topic.slug}/post-exam?session=${activeSession.id}&type=remediation`)
     }
   }
 
@@ -144,20 +104,28 @@ export function TopicOverview({
           <CardHeader>
             <CardTitle className="text-base">Your Profile</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="space-y-3 text-sm">
             <div>
               <span className="font-medium">Mastery:</span> {studentModel.mastery_level}%
             </div>
             {studentModel.strengths.length > 0 && (
               <div>
-                <span className="font-medium">Strengths:</span>{' '}
-                {studentModel.strengths.join(', ')}
+                <p className="font-medium mb-1">Strengths:</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {studentModel.strengths.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {studentModel.weaknesses.length > 0 && (
               <div>
-                <span className="font-medium">Areas to improve:</span>{' '}
-                {studentModel.weaknesses.join(', ')}
+                <p className="font-medium mb-1">Areas to improve:</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {studentModel.weaknesses.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </CardContent>
@@ -197,7 +165,8 @@ export function TopicOverview({
                 : 'Take a diagnostic pre-exam, then get a personalized lesson'}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button onClick={startNewSession} disabled={creating} className="w-full" size="lg">
               {creating ? 'Creating session...' : progress?.attempts ? 'Start New Session' : 'Start Pre-Exam'}
             </Button>
