@@ -9,6 +9,24 @@ interface KatexRendererProps {
   className?: string
 }
 
+function replaceOutsideMath(
+  text: string,
+  pattern: RegExp,
+  replacement: (substring: string, ...args: string[]) => string,
+): string {
+  const segments: string[] = []
+  const mathPattern = /\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$/g
+  let lastIdx = 0
+  let m: RegExpExecArray | null
+  while ((m = mathPattern.exec(text)) !== null) {
+    segments.push(text.slice(lastIdx, m.index).replace(pattern, replacement))
+    segments.push(m[0])
+    lastIdx = m.index + m[0].length
+  }
+  segments.push(text.slice(lastIdx).replace(pattern, replacement))
+  return segments.join('')
+}
+
 function renderMath(math: string, displayMode: boolean): string {
   try {
     return katex.renderToString(math, { displayMode, throwOnError: false })
@@ -20,6 +38,13 @@ function renderMath(math: string, displayMode: boolean): string {
 // Preprocess text before KaTeX rendering to fix structural issues.
 function preprocessKatex(text: string): string {
   let result = text
+
+  // Normalize double-escaped LaTeX commands (e.g. "\\frac", "\\cdot")
+  // that can show up in model output.
+  result = result.replace(
+    /\\\\(frac|cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta|sqrt|left|right|text|textbf|textit|not|in)(?![a-zA-Z])/g,
+    '\\$1'
+  )
 
   // Convert literal "\n" sequences to real newlines, but avoid LaTeX commands
   // like "\neq" that also start with "\n".
@@ -75,7 +100,7 @@ function preprocessKatex(text: string): string {
   return result
 }
 
-function renderLatex(text: string): string {
+export function renderLatex(text: string): string {
   // ── Pre-processing: structural fixes ──
   let result = preprocessKatex(text)
 
@@ -129,6 +154,35 @@ function renderLatex(text: string): string {
     result = `$${result.trim()}$`
   }
 
+  // ── 0g. Render bare LaTeX outside $...$ / $$...$$ only ──
+  // This must run before delimiter-based rendering to avoid re-processing
+  // KaTeX-generated annotation text (which caused nested katex markup).
+  result = replaceOutsideMath(
+    result,
+    /(\\left[\(\[\{][\s\S]*?\\right[\)\]\}])/g,
+    (_, inner) => renderMath(inner, false)
+  )
+  result = replaceOutsideMath(
+    result,
+    /\\frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g,
+    (match) => renderMath(match, false)
+  )
+  result = replaceOutsideMath(
+    result,
+    /\\sqrt(?:\[[^\]]+\])?\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g,
+    (match) => renderMath(match, false)
+  )
+  result = replaceOutsideMath(
+    result,
+    /(\\not\s*\\(?:leq|geq|neq|le|ge|in))(?!\w)/g,
+    (_, cmd) => renderMath(cmd, false)
+  )
+  result = replaceOutsideMath(
+    result,
+    /(\\(?:div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta|not))(?!\w)/g,
+    (_, cmd) => renderMath(cmd, false)
+  )
+
   // ── 0f. Protect spaces adjacent to $...$ from collapsing ──
   // Convert regular spaces immediately before/after INLINE math delimiters
   // to non-breaking spaces so the browser cannot collapse them.
@@ -145,40 +199,6 @@ function renderLatex(text: string): string {
   result = result
     .replace(/\\\(([\s\S]*?)\\\)/g, (_, m) => renderMath(m.trim(), false))
     .replace(/\$([^\$\n]+?)\$/g, (_, m) => renderMath(m.trim(), false))
-
-  // ── 3. Bare LaTeX remaining after step 2 (no delimiters at all) ──
-  // Order matters: \left…\right first so inner \frac isn't rendered
-  // separately (which would break the \left…\right match).
-
-  // 3a: \left(…\right) pairs — BEFORE \frac
-  result = result.replace(
-    /(\\left[\(\[\{][\s\S]*?\\right[\)\]\}])/g,
-    (_, inner) => renderMath(inner, false)
-  )
-
-  // 3b: \frac{…}{…}
-  result = result.replace(
-    /\\frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g,
-    (match) => renderMath(match, false)
-  )
-
-  // 3c: \sqrt{…}
-  result = result.replace(
-    /\\sqrt\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g,
-    (match) => renderMath(match, false)
-  )
-
-  // 3d: Compound \not commands (\not\leq, \not\geq, etc.)
-  result = result.replace(
-    /(\\not\s*\\(?:leq|geq|neq|le|ge|in))(?!\w)/g,
-    (_, cmd) => renderMath(cmd, false)
-  )
-
-  // 3e: Other common bare LaTeX operators
-  result = result.replace(
-    /(\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta|not))(?!\w)/g,
-    (_, cmd) => renderMath(cmd, false)
-  )
 
   // 4. Convert remaining newlines to <br> so step-split equations render
   //    on separate lines in the HTML output.
