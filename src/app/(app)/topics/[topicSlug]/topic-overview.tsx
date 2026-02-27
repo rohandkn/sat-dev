@@ -69,7 +69,9 @@ export function TopicOverview({
     if (!activeSession) return
 
     const state = activeSession.state
-    if (state.startsWith('pre_exam')) {
+    if (state === 'pre_exam_completed') {
+      router.push(`/topics/${topic.slug}/lesson?session=${activeSession.id}`)
+    } else if (state.startsWith('pre_exam')) {
       router.push(`/topics/${topic.slug}/pre-exam?session=${activeSession.id}`)
     } else if (state.startsWith('lesson') && !state.includes('remediation')) {
       router.push(`/topics/${topic.slug}/lesson?session=${activeSession.id}`)

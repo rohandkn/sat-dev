@@ -95,6 +95,7 @@ MATHEMATICAL ACCURACY (critical — follow exactly):
 4. Set correct_answer to the letter whose value matches the answer in the explanation.
 5. Do NOT include "rechecking", "verifying", "however", "alternatively", or any second computation in the explanation. One path, one answer, done.
 6. When multiplying or dividing by a negative number, only flip inequality signs for <, >, \\leq, \\geq. Do NOT flip for \\neq.
+7. If an inequality's solution is a set/range (not a single number), the answer choices must be full solution sets (e.g., interval notation or inequality statements), not standalone numeric values.
 
 MULTIPLE-SOLUTION EQUATIONS (critical — follow exactly):
 - For equations with multiple solutions (quadratics, absolute value, etc.), after solving, list ALL valid solutions.
@@ -104,6 +105,7 @@ MULTIPLE-SOLUTION EQUATIONS (critical — follow exactly):
 BANNED QUESTION FORMATS (critical — NEVER use these):
 - NEVER ask "Which of the following is NOT a possible value for $x$?" or any negated question where multiple choices could be correct. These questions frequently have multiple valid answers and are unsolvable for students.
 - NEVER use $\\neq$ in a way that asks students to identify excluded values.
+- NEVER write a one-variable not-equal inequality solve question (like "$ax + b \\neq c$") with numeric-only answer choices; these almost always create multiple correct choices.
 - Instead, ALWAYS use positive framing: "What is the value of $x$?", "Which of the following is a solution?", or "What is a possible value of $x$?" — where exactly ONE choice is the correct answer and the other three are wrong.
 
 SYSTEMS OF EQUATIONS — CONSISTENCY RULE (critical):

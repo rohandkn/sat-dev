@@ -25,6 +25,38 @@ const MAX_GENERATION_ATTEMPTS = 5
 const MAX_VALIDATION_ATTEMPTS = 2
 const MAX_PARTIAL_REGEN_ATTEMPTS = 3
 
+function shuffleArray<T>(items: T[]): T[] {
+  const next = [...items]
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[next[i], next[j]] = [next[j], next[i]]
+  }
+  return next
+}
+
+function shuffleQuestionChoices(question: ExamGeneration['questions'][number]): ExamGeneration['questions'][number] {
+  const labels: Array<'A' | 'B' | 'C' | 'D'> = ['A', 'B', 'C', 'D']
+  const shuffledSourceLabels = shuffleArray(labels)
+
+  const shuffledChoices: Record<string, string> = {}
+  let remappedCorrectAnswer: 'A' | 'B' | 'C' | 'D' = question.correct_answer
+
+  for (let i = 0; i < labels.length; i += 1) {
+    const targetLabel = labels[i]
+    const sourceLabel = shuffledSourceLabels[i]
+    shuffledChoices[targetLabel] = question.choices[sourceLabel]
+    if (sourceLabel === question.correct_answer) {
+      remappedCorrectAnswer = targetLabel
+    }
+  }
+
+  return {
+    ...question,
+    choices: shuffledChoices,
+    correct_answer: remappedCorrectAnswer,
+  }
+}
+
 function normalizeChoiceValue(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
 }
@@ -60,6 +92,38 @@ function isNegatedQuestion(text: string): boolean {
     || /NOT a possible value/i.test(text)
     || /NOT a solution/i.test(text)
     || /cannot be/i.test(text)
+}
+
+function isSingleVariableNotEqualsSolveQuestion(text: string): boolean {
+  const normalized = text.toLowerCase()
+  const hasNotEquals = /\\neq|≠|not\s+equal/i.test(text)
+  const isGraphing = /graph|graphing|represents\s+the\s+solution/i.test(normalized)
+  const asksToSolve = /\bsolve\b/i.test(normalized)
+    || /what is the solution/i.test(normalized)
+    || /solution for\s+\$?\s*x/i.test(normalized)
+    || /which .*is a solution/i.test(normalized)
+
+  return hasNotEquals && !isGraphing && asksToSolve
+}
+
+function isScalarChoiceValue(value: string): boolean {
+  const compact = value
+    .replace(/\$/g, '')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+
+  if (!compact) return false
+  if (/[xy]/.test(compact)) return false
+  if (/\\leq|\\geq|\\neq|\\lt|\\gt|<|>|≤|≥|≠|\\infty|∞/.test(compact)) return false
+  if (/[\[\]\(\),]/.test(compact)) return false
+
+  const integerOrDecimal = /^[-+]?\d*\.?\d+$/
+  const fraction = /^[-+]?\\frac\{[-+]?\d+\}\{[-+]?\d+\}$/
+  return integerOrDecimal.test(compact) || fraction.test(compact)
+}
+
+function hasOnlyScalarChoices(choices: Record<string, string>): boolean {
+  return Object.values(choices).every(isScalarChoiceValue)
 }
 
 function hasBothSidesShading(choices: Record<string, string>): boolean {
@@ -109,6 +173,7 @@ async function validateQuestions(
   incorrectIndexes: number[]
   graphingNotEqualsIndexes: number[]
   negatedQuestionIndexes: number[]
+  scalarNotEqualsSolveIndexes: number[]
 }> {
   let validation: ExamValidation | null = null
 
@@ -189,6 +254,15 @@ async function validateQuestions(
     .map((q, i) => isNegatedQuestion(q.question_text) ? i + 1 : null)
     .filter((index): index is number => index !== null)
 
+  const scalarNotEqualsSolveIndexes = questions
+    .map((q, i) => {
+      const index = i + 1
+      if (!isSingleVariableNotEqualsSolveQuestion(q.question_text)) return null
+      if (!hasOnlyScalarChoices(q.choices)) return null
+      return index
+    })
+    .filter((index): index is number => index !== null)
+
   return {
     validationByIndex,
     missingValidation,
@@ -196,6 +270,7 @@ async function validateQuestions(
     incorrectIndexes,
     graphingNotEqualsIndexes,
     negatedQuestionIndexes,
+    scalarNotEqualsSolveIndexes,
   }
 }
 
@@ -404,13 +479,15 @@ export async function POST(request: NextRequest) {
         incorrectIndexes,
         graphingNotEqualsIndexes,
         negatedQuestionIndexes,
+        scalarNotEqualsSolveIndexes,
       } = await validateQuestions(generated.questions)
 
       if (!missingValidation
         && duplicateIndexes.length === 0
         && incorrectIndexes.length === 0
         && graphingNotEqualsIndexes.length === 0
-        && negatedQuestionIndexes.length === 0) {
+        && negatedQuestionIndexes.length === 0
+        && scalarNotEqualsSolveIndexes.length === 0) {
         result = generated
         break
       }
@@ -419,7 +496,8 @@ export async function POST(request: NextRequest) {
         || duplicateIndexes.length > 0
         || incorrectIndexes.length > 0
         || graphingNotEqualsIndexes.length > 0
-        || negatedQuestionIndexes.length > 0) {
+        || negatedQuestionIndexes.length > 0
+        || scalarNotEqualsSolveIndexes.length > 0) {
         console.error('Exam generation validation details:', {
           attempt,
           missingValidation,
@@ -427,6 +505,7 @@ export async function POST(request: NextRequest) {
           incorrectIndexes,
           graphingNotEqualsIndexes,
           negatedQuestionIndexes,
+          scalarNotEqualsSolveIndexes,
         })
 
         if (duplicateIndexes.length > 0) {
@@ -471,6 +550,10 @@ export async function POST(request: NextRequest) {
         if (negatedQuestionIndexes.length > 0) {
           console.error('Negated question indexes (banned format):', negatedQuestionIndexes)
         }
+
+        if (scalarNotEqualsSolveIndexes.length > 0) {
+          console.error('Not-equals solve questions with scalar-only choices (banned format):', scalarNotEqualsSolveIndexes)
+        }
       }
 
       lastValidationError = [
@@ -487,6 +570,9 @@ export async function POST(request: NextRequest) {
         negatedQuestionIndexes.length > 0
           ? `Questions use banned "NOT a possible value" format (risk of multiple correct answers): ${negatedQuestionIndexes.join(', ')}. Use positive framing instead.`
           : null,
+        scalarNotEqualsSolveIndexes.length > 0
+          ? `Questions use banned one-variable \\neq solve format with scalar-only choices: ${scalarNotEqualsSolveIndexes.join(', ')}. For \\neq, use graphing with both-side shading or solution-set notation choices.`
+          : null,
       ].filter(Boolean).join(' | ')
 
       // Attempt partial regeneration for invalid questions instead of discarding all.
@@ -496,6 +582,7 @@ export async function POST(request: NextRequest) {
           ...incorrectIndexes,
           ...graphingNotEqualsIndexes,
           ...negatedQuestionIndexes,
+          ...scalarNotEqualsSolveIndexes,
         ]))
         if (invalidIndexes.length > 0) {
           console.error('Attempting partial regeneration for questions:', invalidIndexes)
@@ -522,7 +609,7 @@ export async function POST(request: NextRequest) {
                 },
                 {
                   role: 'user',
-                  content: `${singlePrompt}\n\nREGENERATION INSTRUCTIONS:\n- This replaces question #${index}.\n- Ensure exactly one correct answer.\n- Avoid ambiguous wording.\n- Ensure choices are distinct values.`,
+                  content: `${singlePrompt}\n\nREGENERATION INSTRUCTIONS:\n- This replaces question #${index}.\n- Ensure exactly one correct answer.\n- Avoid ambiguous wording.\n- Ensure choices are distinct values.\n- Do not write one-variable \\neq solve questions with scalar-only answer choices.`,
                 },
               ],
               examGenerationJsonSchema,
@@ -539,13 +626,15 @@ export async function POST(request: NextRequest) {
               incorrectIndexes: candidateIncorrect,
               graphingNotEqualsIndexes: candidateGraphingNotEquals,
               negatedQuestionIndexes: candidateNegated,
+              scalarNotEqualsSolveIndexes: candidateScalarNotEqualsSolve,
             } = await validateQuestions([candidate])
 
             if (!candidateMissing
               && candidateDuplicates.length === 0
               && candidateIncorrect.length === 0
               && candidateGraphingNotEquals.length === 0
-              && candidateNegated.length === 0) {
+              && candidateNegated.length === 0
+              && candidateScalarNotEqualsSolve.length === 0) {
               generated.questions[index - 1] = candidate
               replaced = true
               break
@@ -562,7 +651,8 @@ export async function POST(request: NextRequest) {
           && postPartial.duplicateIndexes.length === 0
           && postPartial.incorrectIndexes.length === 0
           && postPartial.graphingNotEqualsIndexes.length === 0
-          && postPartial.negatedQuestionIndexes.length === 0) {
+          && postPartial.negatedQuestionIndexes.length === 0
+          && postPartial.scalarNotEqualsSolveIndexes.length === 0) {
           result = generated
           break
         }
@@ -574,8 +664,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to generate valid questions' }, { status: 500 })
     }
 
+    const shuffledQuestions = result.questions.map(shuffleQuestionChoices)
+
     // Save questions to DB
-    const questionsToInsert = result.questions.map((q, i) => ({
+    const questionsToInsert = shuffledQuestions.map((q, i) => ({
       session_id: sessionId,
       user_id: user.id,
       exam_type: examType,

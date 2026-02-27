@@ -52,11 +52,17 @@ function replaceOutsideMath(
   return segments.join('')
 }
 
-function preprocessMarkdownMath(text: string): string {
+export function preprocessMarkdownMath(text: string): string {
   // ── Step -1 ────────────────────────────────────────────────────────
   // Recover LaTeX commands corrupted by JSON \n interpretation.
   // \neq → newline + "eq", \frac → form-feed + "rac", etc.
   let result = text
+  // Normalize double-escaped LaTeX commands (e.g. "\\frac", "\\cdot")
+  // that occasionally appear in streamed model output.
+  result = result.replace(
+    /\\\\(frac|cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta|sqrt|left|right|text|textbf|textit|not|in)(?![a-zA-Z])/g,
+    '\\$1'
+  )
   // Normalize Unicode minus (−) to ASCII hyphen for consistent spacing fixes.
   result = result.replace(/\u2212/g, '-')
   // Recover bare inequality operators that lost their backslash or were
@@ -298,10 +304,10 @@ function preprocessMarkdownMath(text: string): string {
     (match) => `$${match}$`
   )
 
-  // 3c: \sqrt{…}
+  // 3c: \sqrt{…} and \sqrt[n]{…}
   result = replaceOutsideMath(
     result,
-    /\\sqrt\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g,
+    /\\sqrt(?:\[[^\]]+\])?\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g,
     (match) => `$${match}$`
   )
 
@@ -323,7 +329,7 @@ function preprocessMarkdownMath(text: string): string {
   // 3e: Other common bare LaTeX operators
   result = replaceOutsideMath(
     result,
-    /(\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta|not))(?!\w)/g,
+    /(\\(?:div|pm|mp|leq|geq|neq|approx|infty|alpha|beta|pi|theta|not))(?!\w)/g,
     (_, cmd) => `$${cmd}$`
   )
 
@@ -512,6 +518,23 @@ function preprocessMarkdownMath(text: string): string {
     /([=<>]|\\leq|\\geq|\\neq)\s*([\-]?\d+[a-zA-Z])/g,
     (match, op, next) => `${op} ${next.replace(/([a-zA-Z])/, '\n$1')}`
   )
+
+  // ── Step 13 ────────────────────────────────────────────────────────
+  // Recovery: if a list step is equation-like, has LaTeX commands/powers,
+  // and lost $...$ delimiters, re-wrap the math segment.
+  result = result.split('\n').map(line => {
+    if (line.includes('$')) return line
+    const match = line.match(/^(\s*(?:[-*+]|\d+\.)\s+)(.+)$/)
+    if (!match) return line
+
+    const prefix = match[1]
+    const body = match[2].trim()
+    const looksMathLike = /[=]/.test(body) && (/[\\^_]/.test(body) || /[(){}]/.test(body))
+    const isMostlyMathChars = /^[a-zA-Z0-9\\^_{}()[\].,+\-*/= \t]+$/.test(body)
+    if (!looksMathLike || !isMostlyMathChars) return line
+
+    return `${prefix}$${body}$`
+  }).join('\n')
 
   return result
 }
