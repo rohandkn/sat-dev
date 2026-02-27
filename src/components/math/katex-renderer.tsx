@@ -121,6 +121,21 @@ function renderLatex(text: string): string {
     )
   }
 
+  // ── 0e. Auto-wrap bare math expressions missing $...$ delimiters ──
+  // GPT-4o sometimes returns choices like "x^4y^3" without delimiters.
+  // If the entire string (trimmed) looks like a math expression and has no
+  // $ delimiters, wrap it in $...$.
+  if (!result.includes('$') && /[\^_]/.test(result) && /^[a-zA-Z0-9\s\^_{}()+\-*/=\\.,]+$/.test(result.trim())) {
+    result = `$${result.trim()}$`
+  }
+
+  // ── 0f. Protect spaces adjacent to $...$ from collapsing ──
+  // Convert regular spaces immediately before/after INLINE math delimiters
+  // to non-breaking spaces so the browser cannot collapse them.
+  // Use lookahead/lookbehind to skip $$ (display math) delimiters.
+  result = result.replace(/ \$(?!\$)/g, '\u00A0$')
+  result = result.replace(/(?<!\$)\$ /g, '$\u00A0')
+
   // ── 1. Display math — \[...\] and $$...$$ ──
   result = result
     .replace(/\\\[([\s\S]*?)\\\]/g, (_, m) => renderMath(m.trim(), true))

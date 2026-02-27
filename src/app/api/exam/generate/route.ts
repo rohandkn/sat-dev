@@ -54,6 +54,14 @@ function isGraphingNotEqualsQuestion(text: string): boolean {
   return hasNotEquals && mentionsGraph && !hasOtherInequalities && isSingleNotEquals
 }
 
+function isNegatedQuestion(text: string): boolean {
+  return /which of the following is\s+NOT\b/i.test(text)
+    || /which is\s+NOT\b/i.test(text)
+    || /NOT a possible value/i.test(text)
+    || /NOT a solution/i.test(text)
+    || /cannot be/i.test(text)
+}
+
 function hasBothSidesShading(choices: Record<string, string>): boolean {
   const normalized = Object.values(choices).map(choice => choice.toLowerCase())
   return normalized.some(choice => (
@@ -100,6 +108,7 @@ async function validateQuestions(
   duplicateIndexes: number[]
   incorrectIndexes: number[]
   graphingNotEqualsIndexes: number[]
+  negatedQuestionIndexes: number[]
 }> {
   let validation: ExamValidation | null = null
 
@@ -176,12 +185,17 @@ async function validateQuestions(
     })
     .filter((index): index is number => index !== null)
 
+  const negatedQuestionIndexes = questions
+    .map((q, i) => isNegatedQuestion(q.question_text) ? i + 1 : null)
+    .filter((index): index is number => index !== null)
+
   return {
     validationByIndex,
     missingValidation,
     duplicateIndexes,
     incorrectIndexes,
     graphingNotEqualsIndexes,
+    negatedQuestionIndexes,
   }
 }
 
@@ -389,12 +403,14 @@ export async function POST(request: NextRequest) {
         duplicateIndexes,
         incorrectIndexes,
         graphingNotEqualsIndexes,
+        negatedQuestionIndexes,
       } = await validateQuestions(generated.questions)
 
       if (!missingValidation
         && duplicateIndexes.length === 0
         && incorrectIndexes.length === 0
-        && graphingNotEqualsIndexes.length === 0) {
+        && graphingNotEqualsIndexes.length === 0
+        && negatedQuestionIndexes.length === 0) {
         result = generated
         break
       }
@@ -402,13 +418,15 @@ export async function POST(request: NextRequest) {
       if (missingValidation
         || duplicateIndexes.length > 0
         || incorrectIndexes.length > 0
-        || graphingNotEqualsIndexes.length > 0) {
+        || graphingNotEqualsIndexes.length > 0
+        || negatedQuestionIndexes.length > 0) {
         console.error('Exam generation validation details:', {
           attempt,
           missingValidation,
           duplicateChoiceIndexes: duplicateIndexes,
           incorrectIndexes,
           graphingNotEqualsIndexes,
+          negatedQuestionIndexes,
         })
 
         if (duplicateIndexes.length > 0) {
@@ -449,6 +467,10 @@ export async function POST(request: NextRequest) {
           })
           console.error('Graphing not-equals details:', graphingDetails)
         }
+
+        if (negatedQuestionIndexes.length > 0) {
+          console.error('Negated question indexes (banned format):', negatedQuestionIndexes)
+        }
       }
 
       lastValidationError = [
@@ -462,6 +484,9 @@ export async function POST(request: NextRequest) {
         graphingNotEqualsIndexes.length > 0
           ? `Graphing not-equals questions missing both-sides shading: ${graphingNotEqualsIndexes.join(', ')}`
           : null,
+        negatedQuestionIndexes.length > 0
+          ? `Questions use banned "NOT a possible value" format (risk of multiple correct answers): ${negatedQuestionIndexes.join(', ')}. Use positive framing instead.`
+          : null,
       ].filter(Boolean).join(' | ')
 
       // Attempt partial regeneration for invalid questions instead of discarding all.
@@ -470,6 +495,7 @@ export async function POST(request: NextRequest) {
           ...duplicateIndexes,
           ...incorrectIndexes,
           ...graphingNotEqualsIndexes,
+          ...negatedQuestionIndexes,
         ]))
         if (invalidIndexes.length > 0) {
           console.error('Attempting partial regeneration for questions:', invalidIndexes)
@@ -512,12 +538,14 @@ export async function POST(request: NextRequest) {
               duplicateIndexes: candidateDuplicates,
               incorrectIndexes: candidateIncorrect,
               graphingNotEqualsIndexes: candidateGraphingNotEquals,
+              negatedQuestionIndexes: candidateNegated,
             } = await validateQuestions([candidate])
 
             if (!candidateMissing
               && candidateDuplicates.length === 0
               && candidateIncorrect.length === 0
-              && candidateGraphingNotEquals.length === 0) {
+              && candidateGraphingNotEquals.length === 0
+              && candidateNegated.length === 0) {
               generated.questions[index - 1] = candidate
               replaced = true
               break
@@ -533,7 +561,8 @@ export async function POST(request: NextRequest) {
         if (!postPartial.missingValidation
           && postPartial.duplicateIndexes.length === 0
           && postPartial.incorrectIndexes.length === 0
-          && postPartial.graphingNotEqualsIndexes.length === 0) {
+          && postPartial.graphingNotEqualsIndexes.length === 0
+          && postPartial.negatedQuestionIndexes.length === 0) {
           result = generated
           break
         }

@@ -128,18 +128,6 @@
     touch-action: manipulation;
   }
 
-  /* Inline KaTeX: add thin spacing so math never visually glues to prose.
-     The margin is small enough to be invisible when a real space already
-     exists, but prevents "y = 3into" when the LLM omits whitespace. */
-  .katex {
-    margin-left: 0.1em;
-    margin-right: 0.1em;
-  }
-  /* Display-mode KaTeX (block equations) should not have side margins. */
-  .katex-display .katex {
-    margin-left: 0;
-    margin-right: 0;
-  }
   /* Prevent any KaTeX error text from showing in red — show in normal
      foreground color so stray backslashes / partial commands blend in
      rather than drawing attention with destructive-red styling. */
