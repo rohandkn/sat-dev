@@ -96,10 +96,10 @@ MATHEMATICAL ACCURACY (critical — follow exactly):
 5. Do NOT include "rechecking", "verifying", "however", "alternatively", or any second computation in the explanation. One path, one answer, done.
 6. When multiplying or dividing by a negative number, only flip inequality signs for <, >, \\leq, \\geq. Do NOT flip for \\neq.
 
-NOT-EQUALS RULE (important):
-- If the problem statement involves $\\neq$ and asks about possible values, DO NOT ask "Which of the following is a possible value for $x$?"
-- Instead, reframe as "Which of the following is NOT a possible value for $x$?" so there is exactly one excluded value.
-- Ensure exactly one choice is the excluded value; the other three must be valid possible values.
+BANNED QUESTION FORMATS (critical — NEVER use these):
+- NEVER ask "Which of the following is NOT a possible value for $x$?" or any negated question where multiple choices could be correct. These questions frequently have multiple valid answers and are unsolvable for students.
+- NEVER use $\\neq$ in a way that asks students to identify excluded values.
+- Instead, ALWAYS use positive framing: "What is the value of $x$?", "Which of the following is a solution?", or "What is a possible value of $x$?" — where exactly ONE choice is the correct answer and the other three are wrong.
 
 SYSTEMS OF EQUATIONS — CONSISTENCY RULE (critical):
 - When writing a question involving a system of equations, you MUST start from a known solution point (e.g. pick $x = 2$, $y = 3$ first, then build equations that are satisfied by those values).

@@ -516,10 +516,65 @@ function preprocessMarkdownMath(text: string): string {
   return result
 }
 
+// Rehype plugin that inserts non-breaking space text nodes around inline
+// KaTeX elements.  Runs AFTER rehype-katex so it operates on the final
+// HAST tree.  This prevents browsers / React from collapsing whitespace
+// adjacent to inline math spans.
+interface HastNode {
+  type: string
+  value?: string
+  tagName?: string
+  properties?: { className?: string[] }
+  children?: HastNode[]
+}
+
+function rehypeKatexSpacing() {
+  function walk(node: HastNode) {
+    if (!node.children) return
+
+    for (let i = 0; i < node.children.length; i++) {
+      const child = node.children[i]
+
+      // Recurse into child elements
+      if (child.type === 'element') {
+        walk(child)
+      }
+
+      // Check if this is an inline .katex span (not display mode)
+      const classes = (child.type === 'element' && Array.isArray(child.properties?.className))
+        ? child.properties!.className!
+        : []
+      if (!classes.includes('katex') || classes.includes('katex-display')) continue
+
+      // Fix the text node AFTER the katex span
+      const next = node.children[i + 1]
+      if (next && next.type === 'text' && next.value) {
+        if (next.value.startsWith(' ')) {
+          next.value = '\u00A0' + next.value.slice(1)
+        } else if (/^[a-zA-Z0-9]/.test(next.value)) {
+          next.value = '\u00A0' + next.value
+        }
+      }
+
+      // Fix the text node BEFORE the katex span
+      const prev = node.children[i - 1]
+      if (prev && prev.type === 'text' && prev.value) {
+        if (prev.value.endsWith(' ')) {
+          prev.value = prev.value.slice(0, -1) + '\u00A0'
+        } else if (/[a-zA-Z0-9]$/.test(prev.value)) {
+          prev.value = prev.value + '\u00A0'
+        }
+      }
+    }
+  }
+
+  return (tree: HastNode) => { walk(tree) }
+}
+
 export function MarkdownRenderer({ content, className, components, skipMath }: MarkdownRendererProps) {
   const processedContent = useMemo(() => skipMath ? content : preprocessMarkdownMath(content), [content, skipMath])
   const remarkPlugins = useMemo(() => skipMath ? [] : [remarkMath], [skipMath])
-  const rehypePlugins = useMemo(() => skipMath ? [] : [rehypeKatex], [skipMath])
+  const rehypePlugins = useMemo(() => skipMath ? [] : [rehypeKatex, rehypeKatexSpacing], [skipMath])
 
   return (
     <div className={`prose dark:prose-invert max-w-none ${className ?? ''}`}>
